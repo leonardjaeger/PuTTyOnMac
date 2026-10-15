@@ -1,0 +1,20 @@
+Abgewiesene Verbindung auf macOS: plink hängt mit 100 % CPU.
+
+macOS meldet einen gescheiterten nicht-blockierenden connect() (z. B. Port
+geschlossen) per poll() nur als POLLHUP, ohne POLLOUT oder POLLERR (gemessen
+am 15.10.2026, docs/M1-Pruefliste.md). PuTTY wartet beim Verbinden nur auf
+„schreibbar“ und ordnet POLLHUP allein dem Lesen zu – poll() kehrt sofort
+zurück, aber kein Handler läuft. Mit POLLHUP auch für „schreibbar“ erreicht
+plink die vorhandene SO_ERROR-Auswertung und meldet „Connection refused“.
+
+--- a/unix/utils/pollwrap.c
++++ b/unix/utils/pollwrap.c
+@@ -116,7 +116,7 @@
+ #define SELECT_X_IN (POLLPRI)
+ 
+ #define SELECT_R_OUT (SELECT_R_IN | POLLERR | POLLHUP)
+-#define SELECT_W_OUT (SELECT_W_IN | POLLERR)
++#define SELECT_W_OUT (SELECT_W_IN | POLLERR | POLLHUP)
+ #define SELECT_X_OUT (SELECT_X_IN)
+ 
+ void pollwrap_add_fd_rwx(pollwrapper *pw, int fd, int rwx)

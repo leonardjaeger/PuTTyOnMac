@@ -1,4 +1,7 @@
 .DS_Store
+xcuserdata/
+SSHAppCore/.build/
+SSHAppCore/.swiftpm/
 
 # Bauergebnisse, Logs und Auftragsablage – Logs und Ausgaben enthalten lokale Pfade mit Benutzernamen (S14)
 build/*
@@ -11,10 +14,14 @@ build/m0/*
 !build/m0/Prototyp/
 build/m0/Prototyp/.build/
 build/m0/Prototyp/.swiftpm/
+!build/m1/
+build/m1/*
+!build/m1/*.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/
 
-# Plan (enthält Heimserver-Adressen) und interne Arbeitsanweisungen
+# Plan (enthält Heimserver-Adressen), interne Arbeitsanweisungen und lokale Testsitzungen (S12)
 SSH-App_Entwicklungsplan.md
 SSH-App_Prompts.md
+Lokal/

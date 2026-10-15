@@ -1,4 +1,5 @@
 #!/bin/bash
-# Zeigt auf das aktuelle Meilenstein-Skript. Für M1 auf build/m1/run.sh umbiegen.
+# Zeigt auf das aktuelle Meilenstein-Skript (M1). Inhalt von cmd.sh steht zur Nachvollziehbarkeit im Log.
 cd "$(dirname "$0")/.." || exit 1
-bash build/m0/run.sh
+echo "--- build/m1/cmd.sh ---"; cat build/m1/cmd.sh; echo "---"
+bash build/m1/cmd.sh
