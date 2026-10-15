@@ -1,0 +1,20 @@
+.DS_Store
+
+# Bauergebnisse, Logs und Auftragsablage – Logs und Ausgaben enthalten lokale Pfade mit Benutzernamen (S14)
+build/*
+!build/skript.sh
+!build/m0/
+build/m0/*
+!build/m0/0*.sh
+!build/m0/env.sh
+!build/m0/run.sh
+!build/m0/Prototyp/
+build/m0/Prototyp/.build/
+build/m0/Prototyp/.swiftpm/
+
+# Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
+Quellen/
+
+# Plan (enthält Heimserver-Adressen) und interne Arbeitsanweisungen
+SSH-App_Entwicklungsplan.md
+SSH-App_Prompts.md
