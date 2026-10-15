@@ -1,6 +1,6 @@
 # Projektstand SSH-App
 
-**Stand:** 15.10.2026 · **Letzter abgenommener Meilenstein:** M1 Fundament (Tag `m1`, abgenommen am 15.10.2026, `docs/M1-Pruefliste.md`) · **Nächster:** M2 Sitzungsverwaltung
+**Stand:** 15.10.2026 · **Letzter abgenommener Meilenstein:** M1 Fundament (Tag `m1`, Commit `890b362`, abgenommen am 15.10.2026, `docs/M1-Pruefliste.md`) · **Nächster:** M2 Sitzungsverwaltung
 
 ## Version und Bausteine
 
