@@ -6,9 +6,9 @@ import os
 import Security
 import SwiftTerm
 
-let log = Logger(subsystem: "de.leonardjaeger.sshapp.m0prototyp", category: "m0")
+let log = Logger(subsystem: "de.leonardjaeger.tunnelterminal.m0prototyp", category: "m0")
 let inSandbox = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
-let keychainService = "SSH-App-M0-Test"
+let keychainService = "TunnelTerminal-M0-Test"
 
 struct PrototypeError: Error, CustomStringConvertible {
     let description: String
@@ -24,7 +24,7 @@ func plinkPath() -> String {
 func supportDirectory(_ name: String) throws -> URL {
     let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                            appropriateFor: nil, create: true)
-    let dir = base.appendingPathComponent("SSH-App-Prototyp/\(name)", isDirectory: true)
+    let dir = base.appendingPathComponent("TunnelTerminal-Prototyp/\(name)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
                                             attributes: [.posixPermissions: 0o700])
     return dir

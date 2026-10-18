@@ -1,6 +1,6 @@
-# SSH-App – Begriffe
+# TunnelTerminal – Begriffe
 
-Glossar der App (Arbeitstitel „SSH-App“). Nur Begriffe, keine Umsetzung.
+Glossar der App TunnelTerminal (Name seit U1, 18.10.2026). Nur Begriffe, keine Umsetzung.
 
 **Sitzung** – ein benannter Satz PuTTY-Einstellungen (Server, Benutzer, Port, Protokoll, Terminaltyp …) im PuTTY-Format. Gespeicherte Sitzungen kommen in M2; bis dahin entstehen Sitzungen nur vorübergehend für eine Schnellverbindung.
 _Nicht:_ Verbindung, Profil.

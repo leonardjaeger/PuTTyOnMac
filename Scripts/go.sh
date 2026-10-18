@@ -2,10 +2,10 @@
 # Für Claude (VM/device_bash): Auftrag stellen und auf das Ergebnis warten.
 # Aufruf: bash Scripts/go.sh <modus> <name> [max-sekunden]   ·   bash Scripts/go.sh warte <name> [max-sekunden]
 # Gibt am Ende das Log aus und endet mit dem Exit-Code des Auftrags (124 = Wartezeit abgelaufen, läuft weiter).
-# Die Ablage ist die des Bauwächters (~/Library/Caches/SSH-App-Build/waechter), in der VM unter mnt/SSH-App-Build.
+# Die Ablage ist die des Bauwächters (~/Library/Caches/TunnelTerminal-Build/waechter), in der VM unter mnt/TunnelTerminal-Build.
 set -u
 mode="$1"; name="$2"; max="${3:-160}"
-queue="${SSHAPP_WAECHTER:-$HOME/mnt/SSH-App-Build/waechter}"
+queue="${TUNNELTERMINAL_WAECHTER:-$HOME/mnt/TunnelTerminal-Build/waechter}"
 status="$queue/logs/status-$name.txt"
 
 if [ "$mode" != "warte" ]; then

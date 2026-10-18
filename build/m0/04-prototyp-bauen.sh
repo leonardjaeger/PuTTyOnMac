@@ -11,14 +11,14 @@ P="build/m0/Prototyp"
 plink="$PUTTY_BUILD/plink"
 [ -x "$plink" ] || { echo "plink fehlt – zuerst 03-putty-bauen.sh"; exit 2; }
 
-scratch="$HOME/Library/Caches/SSH-App-Build/m0-prototyp"
+scratch="$HOME/Library/Caches/TunnelTerminal-Build/m0-prototyp"
 start=$(date +%s)
 xcrun swift build -c release --package-path "$P" --scratch-path "$scratch" 2>&1 | tail -30
 bin="$(xcrun swift build -c release --package-path "$P" --scratch-path "$scratch" --show-bin-path)/Prototyp"
 echo "Bauzeit Prototyp: $(( $(date +%s) - start )) s"
 echo "Bibliotheken des Prototyps:"; otool -L "$bin" | tail -n +2
 
-out="$HOME/Library/Caches/SSH-App-Build/m0-out"
+out="$HOME/Library/Caches/TunnelTerminal-Build/m0-out"
 bundle() {
   local name="$1" sandbox="$2" app="$out/$1.app"
   rm -rf "$app"
@@ -29,7 +29,7 @@ bundle() {
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleIdentifier</key><string>de.leonardjaeger.sshapp.m0prototyp$( [ "$sandbox" = ja ] && echo .sandbox )</string>
+  <key>CFBundleIdentifier</key><string>de.leonardjaeger.tunnelterminal.m0prototyp$( [ "$sandbox" = ja ] && echo .sandbox )</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundleExecutable</key><string>Prototyp</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -57,4 +57,4 @@ mkdir -p "$out"
 bundle Prototyp nein
 bundle Prototyp-Sandbox ja
 echo "Treffer /Users/ im Prototyp-Binary: $(strings "$out/Prototyp.app/Contents/MacOS/Prototyp" | grep -c '/Users/' || true)"
-echo "Fertig. Pakete liegen im Cache-Ordner SSH-App-Build/m0-out"
+echo "Fertig. Pakete liegen im Cache-Ordner TunnelTerminal-Build/m0-out"

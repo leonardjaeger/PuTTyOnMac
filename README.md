@@ -1,8 +1,8 @@
-# PuTTyOnMac
+# TunnelTerminal
 
-Native Mac-App für PuTTY-Sitzungen (Arbeitstitel „SSH-App“). Die App nutzt PuTTYs eigenes `plink` als Verbindungsprogramm und zeigt das Terminal mit [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) an. Einen eigenen SSH-Code enthält sie nicht: Protokoll, Kryptografie und Prüfung der Hostschlüssel bleiben bei PuTTY.
+Native Mac-App für PuTTY-Sitzungen. Die App nutzt PuTTYs eigenes `plink` als Verbindungsprogramm und zeigt das Terminal mit [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) an. Einen eigenen SSH-Code enthält sie nicht: Protokoll, Kryptografie und Prüfung der Hostschlüssel bleiben bei PuTTY.
 
-**Stand:** Meilenstein M1 (Version 0.1.0) mit Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw und nativen Tabs. Gespeicherte Sitzungen, Schlüssel, Tunnel und Weitergabe folgen.
+**Stand:** Version 0.1.1 (Meilenstein M1 und Umbenennung U1) mit Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw und nativen Tabs. Gespeicherte Sitzungen, Schlüssel, Tunnel und Weitergabe folgen.
 
 ## Voraussetzungen
 
@@ -12,9 +12,9 @@ Native Mac-App für PuTTY-Sitzungen (Arbeitstitel „SSH-App“). Die App nutzt 
 
 ## Bauen
 
-`SSHApp.xcodeproj` öffnen, beim SwiftTerm-Plugin einmal „Trust & Enable“ wählen, dann ⌘R. Die Phase „PuTTY-Werkzeuge bauen“ baut `plink`, `pscp`, `psftp` und `puttygen` aus dem geprüften Tarball und legt sie signiert nach `Contents/Helpers`.
+`TunnelTerminal.xcodeproj` öffnen, beim SwiftTerm-Plugin einmal „Trust & Enable“ wählen, dann ⌘R. Die Phase „PuTTY-Werkzeuge bauen“ baut `plink`, `pscp`, `psftp` und `puttygen` aus dem geprüften Tarball und legt sie signiert nach `Contents/Helpers`.
 
-Tests: ⌘U (Kern-Paket `SSHAppCore` mit Swift Testing, App mit XCTest).
+Tests: ⌘U (Kern-Paket `TunnelTerminalCore` mit Swift Testing, App mit XCTest).
 
 ## Sicherheit
 

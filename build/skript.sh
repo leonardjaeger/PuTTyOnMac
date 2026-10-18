@@ -1,5 +1,5 @@
 #!/bin/bash
-# Zeigt auf das aktuelle Meilenstein-Skript (M1). Inhalt von cmd.sh steht zur Nachvollziehbarkeit im Log.
+# Zeigt auf das aktuelle Hilfsskript (U1: Release-Prüfung). Sein Inhalt steht zur Nachvollziehbarkeit im Log.
 cd "$(dirname "$0")/.." || exit 1
-echo "--- build/m1/cmd.sh ---"; cat build/m1/cmd.sh; echo "---"
-bash build/m1/cmd.sh
+echo "--- build/u1/pruef.sh ---"; cat build/u1/pruef.sh; echo "---"
+bash build/u1/pruef.sh

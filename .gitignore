@@ -1,7 +1,7 @@
 .DS_Store
 xcuserdata/
-SSHAppCore/.build/
-SSHAppCore/.swiftpm/
+TunnelTerminalCore/.build/
+TunnelTerminalCore/.swiftpm/
 
 # Bauergebnisse, Logs und Auftragsablage – Logs und Ausgaben enthalten lokale Pfade mit Benutzernamen (S14)
 build/*
@@ -17,11 +17,23 @@ build/m0/Prototyp/.swiftpm/
 !build/m1/
 build/m1/*
 !build/m1/*.sh
+# U1: nur die Release-Prüfung; build/u1/cmd.sh (Datenumzug) bleibt lokal, weil es den alten Namen enthalten muss
+!build/u1/
+build/u1/*
+!build/u1/pruef.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/
 
 # Plan (enthält Heimserver-Adressen), interne Arbeitsanweisungen und lokale Testsitzungen (S12)
-SSH-App_Entwicklungsplan.md
-SSH-App_Prompts.md
+# als Muster, damit auch Kopien unter früheren oder künftigen App-Namen nie ins Repo kommen
+*_Entwicklungsplan.md
+*_Prompts.md
 Lokal/
+
+# Design: nur die finale Logo-Richtung kommt ins Repo (U1); Vorrunde und die verworfene Namensvariante bleiben lokal
+Design/*
+!Design/Logo-Final/
+Design/Logo-Final/_alt-TunnelSSH/
+# Python-Bytecode enthält absolute Quellpfade mit Benutzernamen (S14)
+__pycache__/

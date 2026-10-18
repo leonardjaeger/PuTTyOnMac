@@ -8,31 +8,31 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 mode="${1:-}"
-cache="$HOME/Library/Caches/SSH-App-Build"
+cache="$HOME/Library/Caches/TunnelTerminal-Build"
 
 case "$mode" in
   test)
     # Wie MintMarkPDF: xcodebuild führt die Kern-Tests (Swift Testing im lokalen Paket) auf der Kommandozeile
     # nicht aus, Xcode (⌘U) schon – hier deshalb zuerst swift test, dann die App-Tests.
-    xcrun swift test --package-path SSHAppCore --scratch-path "$cache/CoreBuild" || exit $?
-    xcodebuild -skipPackagePluginValidation -project SSHApp.xcodeproj -scheme SSHApp -destination 'platform=macOS' \
+    xcrun swift test --package-path TunnelTerminalCore --scratch-path "$cache/CoreBuild" || exit $?
+    xcodebuild -skipPackagePluginValidation -project TunnelTerminal.xcodeproj -scheme TunnelTerminal -destination 'platform=macOS' \
       -derivedDataPath "$cache/DerivedData" test
     ;;
   build)
     # SwiftTerm bringt ein Build-Plugin mit (erzeugt Versions- und terminfo-Tabellen, läuft in der
     # Xcode-Plugin-Sandbox ohne Netz; geprüft in M1). In Xcode einmal „Trust & Enable“ wählen.
-    xcodebuild -skipPackagePluginValidation -project SSHApp.xcodeproj -scheme SSHApp -destination 'platform=macOS' \
+    xcodebuild -skipPackagePluginValidation -project TunnelTerminal.xcodeproj -scheme TunnelTerminal -destination 'platform=macOS' \
       -derivedDataPath "$cache/DerivedData" "$mode"
     ;;
   kern)
-    xcrun swift test --package-path SSHAppCore --scratch-path "$cache/CoreBuild"
+    xcrun swift test --package-path TunnelTerminalCore --scratch-path "$cache/CoreBuild"
     ;;
   skript)
     [ -f build/skript.sh ] || { echo "build/skript.sh fehlt."; exit 2; }
     bash build/skript.sh
     ;;
   log)
-    log show --last 15m --info --style compact --predicate 'subsystem BEGINSWITH "de.leonardjaeger.sshapp"'
+    log show --last 15m --info --style compact --predicate 'subsystem BEGINSWITH "de.leonardjaeger.tunnelterminal"'
     ;;
   *)
     echo "Unbekannter Modus: '$mode' (erlaubt: build, test, kern, skript, log)"

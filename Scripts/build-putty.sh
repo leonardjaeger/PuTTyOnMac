@@ -21,7 +21,7 @@ TOOLS=(plink pscp psftp puttygen)
 root="$(cd "$(dirname "$0")/.." && pwd)"
 tarball="$root/Quellen/putty-$VERSION.tar.gz"
 # Außerhalb von iCloud bauen (M0, B16)
-cache="$HOME/Library/Caches/SSH-App-Build/putty-$VERSION"
+cache="$HOME/Library/Caches/TunnelTerminal-Build/putty-$VERSION"
 tool_path="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:/Applications/CMake.app/Contents/bin"
 
 fail() { echo "error: $*" >&2; exit 1; }

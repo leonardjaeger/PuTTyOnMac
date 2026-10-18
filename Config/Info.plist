@@ -7,7 +7,7 @@
 	<!-- Info-Meldungen aufbewahren (Richtlinien 3.2 Regel 9); Inhalte nach S9 maskiert -->
 	<key>OSLogPreferences</key>
 	<dict>
-		<key>de.leonardjaeger.sshapp</key>
+		<key>de.leonardjaeger.tunnelterminal</key>
 		<dict>
 			<key>DEFAULT-OPTIONS</key>
 			<dict>

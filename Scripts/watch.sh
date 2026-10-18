@@ -1,13 +1,13 @@
 #!/bin/bash
-# Bauwächter der SSH-App: arbeitet Aufträge nacheinander ab.
-# Ablage außerhalb von iCloud (M0, Vorschlag 10): ~/Library/Caches/SSH-App-Build/waechter
+# Bauwächter von TunnelTerminal: arbeitet Aufträge nacheinander ab.
+# Ablage außerhalb von iCloud (M0, Vorschlag 10): ~/Library/Caches/TunnelTerminal-Build/waechter
 #   Auftrag:  echo <modus> > requests/<name>.request
 #   Ergebnis: logs/<name>.log, Exit-Code in logs/status-<name>.txt („laeuft“, solange er arbeitet)
 # Jedes Log beginnt mit den Prüfsummen der Skripte (und im Modus „skript“ deren Inhalt);
 # jeder Auftrag hat ein Zeitlimit; Statusdateien werden atomar geschrieben (tmp + mv).
 set -u -m   # -m: jeder Auftrag bekommt eine eigene Prozessgruppe, damit das Zeitlimit ihn ganz beenden kann
 cd "$(dirname "$0")/.." || exit 1
-queue="$HOME/Library/Caches/SSH-App-Build/waechter"
+queue="$HOME/Library/Caches/TunnelTerminal-Build/waechter"
 mkdir -p "$queue/requests" "$queue/logs"
 chmod 700 "$queue" "$queue/requests" "$queue/logs"
 
@@ -25,7 +25,7 @@ write_status() {
   printf '%s\n' "$2" > "$queue/logs/.status-$1.tmp" && mv -f "$queue/logs/.status-$1.tmp" "$queue/logs/status-$1.txt"
 }
 
-echo "SSH-App Bauwächter läuft in $(pwd | sed "s|^$HOME|~|")"
+echo "TunnelTerminal Bauwächter läuft in $(pwd | sed "s|^$HOME|~|")"
 echo "Beenden mit ctrl-C oder durch Schließen des Fensters."
 
 while true; do
@@ -48,7 +48,7 @@ while true; do
     {
       echo "Auftrag $name · Modus $mode · $(date '+%d.%m.%Y %H:%M:%S') · Zeitlimit $(limit_for "$mode") s"
       echo "SHA-256 der Skripte:"
-      shasum -a 256 Scripts/*.sh build/skript.sh build/m1/*.sh 2>/dev/null
+      shasum -a 256 Scripts/*.sh build/skript.sh build/m1/*.sh build/u1/*.sh 2>/dev/null
       if [ "$mode" = skript ]; then echo "--- build/skript.sh ---"; cat build/skript.sh; fi
       echo "---"
     } > "$log"

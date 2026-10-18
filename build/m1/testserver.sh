@@ -2,7 +2,7 @@
 # M1-Oberflächenprüfung: Wegwerf-SSH-Server nur für diesen Benutzer auf 127.0.0.1:2222 mit Wegwerf-Schlüssel
 # im eigenen ssh-agent. ~/.ssh und das System-sshd bleiben unberührt. Aufruf: testserver.sh start|stop|status
 set -u
-d="$HOME/Library/Caches/SSH-App-Build/m1-testserver"
+d="$HOME/Library/Caches/TunnelTerminal-Build/m1-testserver"
 case "${1:-status}" in
   start)
     mkdir -p "$d"; chmod 700 "$d"
@@ -30,7 +30,7 @@ CFG
     sleep 1
     SSH_AUTH_SOCK="$d/agent.sock" ssh-add "$d/client_ed25519"
     sleep 1; tail -3 "$d/sshd.log"
-    echo "Agent-Socket: \$HOME/Library/Caches/SSH-App-Build/m1-testserver/agent.sock"
+    echo "Agent-Socket: \$HOME/Library/Caches/TunnelTerminal-Build/m1-testserver/agent.sock"
     ;;
   stop)
     # Nur beenden, wenn die gespeicherte Nummer noch zu sshd bzw. ssh-agent gehört (Nummern werden wiederverwendet)
