@@ -1,6 +1,6 @@
 # Projektstand TunnelTerminal
 
-**Stand:** 18.10.2026 · **Letzter abgenommener Meilenstein:** M1 Fundament (Tag `m1`, Commit `890b362`, abgenommen am 15.10.2026, `docs/M1-Pruefliste.md`) · **In Abnahme:** U1 Umbenennung zu TunnelTerminal und App-Icon (`docs/U1-Pruefliste.md`) · **Nächster:** M2 Sitzungsverwaltung
+**Stand:** 18.10.2026 · **Letzter abgenommener Schritt:** U1 Umbenennung zu TunnelTerminal und App-Icon (Tag `u1`, Commit `642d38f`, abgenommen am 18.10.2026, `docs/U1-Pruefliste.md`); davor M1 Fundament (Tag `m1`, Commit `890b362`) · **Nächster:** M2 Sitzungsverwaltung
 
 ## Version und Bausteine
 
