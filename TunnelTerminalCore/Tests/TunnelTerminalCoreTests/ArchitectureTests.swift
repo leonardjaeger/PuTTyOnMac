@@ -147,4 +147,24 @@ struct ArchitectureTests {
         }
         #expect(offenders.isEmpty, "App heißt TunnelTerminal (U1): \(offenders)")
     }
+
+    @Test("Passwörter und Passphrasen nie in UserDefaults, Protokoll oder Dateien; Schlüsselbund nur an einer Stelle (S1)")
+    func secretsStayInKeychain() {
+        let secretWords: [String] = ["passw", "passphrase", "secret", "geheim"]
+        let sinks: [String] = ["UserDefaults", "@AppStorage", "@SceneStorage", ".debug(", ".info(", ".notice(", ".error(",
+                               ".fault(", ".warning(", " print(", "NSLog(", ".write(to", "createFile(", "FileHandle("]
+        var offenders: [String] = []
+        var keychainFiles: Set<String> = []
+        for file in Self.files(in: ["TunnelTerminal", "TunnelTerminalCore/Sources"], extensions: ["swift"]) {
+            for (number, line) in Self.lines(file).enumerated() {
+                let lower: String = line.lowercased()
+                if secretWords.contains(where: lower.contains), sinks.contains(where: line.contains) {
+                    offenders.append("\(Self.relative(file)):\(number + 1)")
+                }
+                if line.contains("SecItem") { keychainFiles.insert(Self.relative(file)) }
+            }
+        }
+        #expect(offenders.isEmpty, "Geheimnisse nur im Schlüsselbund und in der Pipe (S1): \(offenders)")
+        #expect(keychainFiles.count <= 1, "Schlüsselbund-Zugriffe gehören in PasswordStore.swift: \(keychainFiles.sorted())")
+    }
 }

@@ -1,8 +1,32 @@
 import SwiftUI
 
-/// Leiste unten in der Seitenleiste: Sitzung anlegen und die ausgewählte bearbeiten – sichtbare Wege neben Menü und
-/// Kontextmenü (Plan 3.1; ab M3 kommen hier „Schlüssel“ und „Bekannte Hostschlüssel“ dazu).
+/// Unten in der Seitenleiste (Plan 3.1): „Schlüssel“ und „Bekannte Hostschlüssel“ (M3), darunter Sitzung anlegen und
+/// die ausgewählte bearbeiten – sichtbare Wege neben Menü und Kontextmenü.
 struct SidebarFooter: View {
+    let model: SessionsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Divider()
+                .padding(.bottom, 4)
+            Button("Schlüssel", systemImage: "key", action: showKeys)
+            Button("Bekannte Hostschlüssel", systemImage: "checkmark.shield", action: showKnownHosts)
+            SessionButtons(model: model)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private func showKeys() {
+        NSApp.sendAction(#selector(AppDelegate.showKeys(_:)), to: nil, from: nil)
+    }
+
+    private func showKnownHosts() {
+        NSApp.sendAction(#selector(AppDelegate.showKnownHosts(_:)), to: nil, from: nil)
+    }
+}
+
+/// Neue Sitzung und Bearbeiten als Symbolknöpfe.
+private struct SessionButtons: View {
     let model: SessionsModel
 
     var body: some View {

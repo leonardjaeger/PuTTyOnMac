@@ -6,12 +6,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Gespeicherte Sitzungen, gemeinsam für alle Fenster.
     private var library: SessionLibrary?
     private let connected: ConnectedSessions = ConnectedSessions()
+    /// Fenster „Schlüssel“ und „Bekannte Hostschlüssel“, je eines für die App (M3).
+    private var keysWindow: ToolWindowController?
+    private var knownHostsWindow: ToolWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
         removeQuickSessions()   // Reste nach einem Absturz
         do {
-            library = SessionLibrary(directory: try AppIdentity.puttyDirectory())
+            library = SessionLibrary(directory: try AppIdentity.puttyDirectory(), passwords: AppIdentity.passwords)
         } catch {
             AppLog.app.error("PuTTY-Ordner nicht erreichbar: \(error.localizedDescription, privacy: .private(mask: .hash))")
             NSAlert(error: error).runModal()   // ohne PuTTY-Ordner geht weder Sitzung noch Schnellverbindung
@@ -60,6 +63,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func importRegistry(_ sender: Any?) { frontController()?.importRegistry(nil) }
     @objc func importFolder(_ sender: Any?) { frontController()?.importFolder(nil) }
     @objc func focusQuickConnect(_ sender: Any?) { frontController()?.focusQuickConnect(nil) }
+
+    /// Fenster „Schlüssel“ (Seitenleiste unten, Fenster-Menü, Hilfe).
+    @objc func showKeys(_ sender: Any?) {
+        if keysWindow == nil {
+            let model: KeysModel = KeysModel()
+            let controller: ToolWindowController = ToolWindowController(title: "Schlüssel", autosaveName: "Schlüssel",
+                                                                        rootView: KeysView(model: model))
+            model.window = controller.window
+            keysWindow = controller
+        }
+        keysWindow?.showWindow(nil)
+    }
+
+    /// Fenster „Bekannte Hostschlüssel“; liest die Liste neu, sobald es nach vorne kommt.
+    @objc func showKnownHosts(_ sender: Any?) {
+        guard let library else { return }
+        if knownHostsWindow == nil {
+            let model: KnownHostsModel = KnownHostsModel(directory: library.directory)
+            let controller: ToolWindowController = ToolWindowController(
+                title: "Bekannte Hostschlüssel", autosaveName: "Bekannte Hostschlüssel", rootView: KnownHostsView(model: model))
+            controller.onBecomeKey = { [weak model] in model?.reload() }
+            model.reload()
+            knownHostsWindow = controller
+        }
+        knownHostsWindow?.showWindow(nil)
+    }
 
     private func frontController() -> ConnectionWindowController? {
         let controller: ConnectionWindowController? = makeController()

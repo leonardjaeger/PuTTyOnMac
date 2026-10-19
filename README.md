@@ -2,7 +2,7 @@
 
 Native Mac-App für PuTTY-Sitzungen. Die App nutzt PuTTYs eigenes `plink` als Verbindungsprogramm und zeigt das Terminal mit [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) an. Einen eigenen SSH-Code enthält sie nicht: Protokoll, Kryptografie und Prüfung der Hostschlüssel bleiben bei PuTTY.
 
-**Stand:** Version 0.1.1 (Meilenstein M1 und Umbenennung U1) mit Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw und nativen Tabs. Gespeicherte Sitzungen, Schlüssel, Tunnel und Weitergabe folgen.
+**Stand:** Version 0.1.1 (Meilensteine M1–M3) mit Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw, nativen Tabs, gespeicherten Sitzungen (Editor, Import aus PuTTY und Windows-`.reg`, Export), Schlüsseln (Erzeugen und Umwandeln über puttygen), freiwilligem Passwort im Schlüsselbund und der Liste bekannter Hostschlüssel. Terminal-Komfort, Tunnel, Dateiübertragung und Weitergabe folgen.
 
 ## Voraussetzungen
 
@@ -22,6 +22,8 @@ Tests: ⌘U (Kern-Paket `TunnelTerminalCore` mit Swift Testing, App mit XCTest).
 - Start über `posix_spawn` an einem eigenen Pseudo-Terminal; das Programm erbt nur Ein- und Ausgabe.
 - Zwischenablage-Zugriffe (OSC 52) und Links aus der Server-Ausgabe werden nicht ausgeführt.
 - Hostschlüssel werden nie automatisch angenommen.
+- Passwörter liegen nur im Schlüsselbund dieses Macs und gehen über eine Pipe an plink (`-pwfile /dev/fd/3`), nie als Argument oder Datei; sie gelten nur für Benutzer, Server und Port, für die sie gesichert wurden.
+- PuTTY wird ohne GSSAPI gebaut: plink lädt keine fremden Bibliotheken.
 
 ## Lizenz
 

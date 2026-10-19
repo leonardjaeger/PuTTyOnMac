@@ -98,6 +98,9 @@ struct SessionEditor: View {
                 ErrorText(errors[.keepalive])
                 Toggle("TCP-Keepalives", isOn: $tcpKeepalives)
             }
+            SessionAuthenticationSection(file: file, sessionName: name, passwords: model.library.passwords) { path in
+                update(nil) { try $0.setPublicKeyFile(path) }
+            }
             if let proxy = file.proxyDescription {
                 Section("Proxy") {
                     LabeledContent("Proxy", value: SessionWarning.visible(proxy))

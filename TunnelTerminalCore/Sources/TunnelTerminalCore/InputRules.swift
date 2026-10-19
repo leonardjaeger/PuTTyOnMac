@@ -7,6 +7,8 @@ public enum InputField: String, Sendable {
     case value = "Wert"
     case terminalType = "Terminaltyp"
     case keepalive = "Keepalive-Intervall"
+    case comment = "Kommentar"
+    case path = "Pfad"
 }
 
 /// Abgelehnte Eingabe. Die Regeln stehen in Plan Abschnitt 6 (S3: keine Optionen einschleusen, S4: Sitzungsdateien).
@@ -26,6 +28,7 @@ public enum InputError: Error, Equatable, Sendable {
     case notAPuTTYFolder
     case outOfRange(InputField)
     case nameTaken
+    case notAbsolute
 
     /// Meldung für die Oberfläche.
     public var message: String {
@@ -45,6 +48,7 @@ public enum InputError: Error, Equatable, Sendable {
         case .notAPuTTYFolder: "Der Ordner enthält keine PuTTY-Sitzungen (Unterordner „sessions“ fehlt)."
         case .nameTaken: "Eine Sitzung mit diesem Namen gibt es schon."
         case .outOfRange(let field): "\(field.rawValue) liegt außerhalb des erlaubten Bereichs."
+        case .notAbsolute: "Der Pfad muss vollständig sein (mit „/“ am Anfang)."
         }
     }
 }
@@ -99,6 +103,12 @@ enum InputRules {
             let zone: Substring = parts[1]
             guard !zone.isEmpty, zone.utf8.allSatisfy(isNameByte) else { throw .invalidCharacter(.host) }
         }
+    }
+
+    /// Datei für puttygen bzw. `PublicKeyFile`: absolut (beginnt nie mit „-“) und ohne Steuerzeichen.
+    static func checkAbsolutePath(_ path: String) throws(InputError) {
+        guard path.hasPrefix("/") else { throw .notAbsolute }
+        for scalar in path.unicodeScalars where isControl(scalar) { throw .controlCharacter(.path) }
     }
 
     /// Wert einer Sitzungsdatei: PuTTY maskiert nichts, also dürfen CR, LF und NUL nie hinein (S4).

@@ -1,3 +1,4 @@
+import Security
 import TunnelTerminalCore
 import XCTest
 @testable import TunnelTerminal
@@ -153,5 +154,72 @@ final class ConnectionTests: XCTestCase {
         XCTAssertThrowsError(try connection.warningsRequiringConfirmation())
         XCTAssertTrue(try Connection(endpoint: try Endpoint(parsing: "server.example"), connectionProtocol: .ssh)
             .warningsRequiringConfirmation().isEmpty)
+    }
+
+    // MARK: - Gespeichertes Passwort (M3, S1)
+
+    /// SSH-Sitzung auf einen abweisenden Port und ein Schlüsselbund nur für diesen Test.
+    private func passwordSession(storedFor target: String?) throws -> (Connection, PasswordStore) {
+        let probe: (descriptor: Int32, port: Int) = try localSocket(listening: false)
+        close(probe.descriptor)
+        let folder: URL = FileManager.default.temporaryDirectory.appendingPathComponent("TunnelTerminalTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: folder)
+        var file: SessionFile = SessionFile()
+        try file.setHostName("127.0.0.1")
+        try file.setPortNumber(probe.port)
+        try file.setUserName("test")
+        try directory.write(file, sessionName: "Mit Passwort")
+        let store: PasswordStore = PasswordStore(service: "\(AppIdentity.logSubsystem).tests.\(UUID().uuidString)")
+        addTeardownBlock { SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: store.service] as CFDictionary) }
+        if let target { try store.save("geheim-1234", session: "Mit Passwort", target: target) }
+        return (try Connection(savedSession: "Mit Passwort", puttyDirectory: { directory }, passwords: store), store)
+    }
+
+    private func run(_ connection: Connection) -> String {
+        let ended: XCTestExpectation = expectation(description: "Verbindungsende")
+        var bytes: [UInt8] = []
+        connection.onOutput = { bytes.append(contentsOf: $0) }
+        connection.onEnd = { _ in ended.fulfill() }
+        XCTAssertNoThrow(try connection.start(columns: 80, rows: 24))
+        wait(for: [ended], timeout: 15)
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// plink nimmt `-pwfile /dev/fd/3` an (sonst Fehlermeldung zur Option) und läuft bis zur Verbindung.
+    func testStoredPasswordGoesToPlinkThroughPipe() throws {
+        let (connection, store) = try passwordSession(storedFor: nil)
+        let target: String = try XCTUnwrap(connection.settings()?.passwordTarget)
+        try store.save("geheim-1234", session: "Mit Passwort", target: target)
+        XCTAssertTrue(connection.hasStoredPassword)
+        let output: String = run(connection)
+        XCTAssertTrue(connection.usesStoredPassword)
+        XCTAssertTrue(output.contains("refused"), output)
+        XCTAssertFalse(output.contains("geheim-1234"))
+        XCTAssertFalse(try connection.again(withStoredPassword: false).hasStoredPassword)
+        XCTAssertTrue(try connection.again().hasStoredPassword)
+    }
+
+    func testPasswordForOtherTargetIsNotUsed() throws {
+        let (connection, _) = try passwordSession(storedFor: "test@server.example:22")
+        let output: String = run(connection)
+        XCTAssertFalse(connection.usesStoredPassword)
+        XCTAssertTrue(output.contains("Gespeichertes Passwort nicht verwendet"), output)
+    }
+
+    /// plinks Meldung kann über zwei Lese-Blöcke verteilt ankommen (M3).
+    func testRejectedPasswordIsFoundAcrossBlocks() {
+        let message: [UInt8] = Array("\r\nConfigured password was not accepted\r\n".utf8)
+        for split in 1..<message.count {
+            var watch: RejectedPasswordWatch = RejectedPasswordWatch()
+            watch.scan(ArraySlice(Array("Vorspann ".utf8)))
+            watch.scan(message[..<split])
+            watch.scan(message[split...])
+            XCTAssertTrue(watch.found, "Teilung bei \(split)")
+        }
+        var other: RejectedPasswordWatch = RejectedPasswordWatch()
+        other.scan(ArraySlice(Array("Configured password was not".utf8)))
+        other.scan(ArraySlice(Array(" quite right".utf8)))
+        XCTAssertFalse(other.found)
     }
 }

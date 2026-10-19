@@ -11,10 +11,7 @@ final class Connection {
 
     let target: Target
 
-    var onOutput: ((ArraySlice<UInt8>) -> Void)? {
-        get { process.onOutput }
-        set { process.onOutput = newValue }
-    }
+    var onOutput: ((ArraySlice<UInt8>) -> Void)?
     /// Text für den Hinweis bei Verbindungsende.
     var onEnd: ((String) -> Void)?
 
@@ -39,6 +36,16 @@ final class Connection {
     private let process: TerminalProcess = TerminalProcess()
     private var hungUpByUser: Bool = false
     private let puttyDirectory: @MainActor () throws -> PuTTYDirectory
+    /// Schlüsselbund für gespeicherte Passwörter; `nil` bei Schnellverbindungen und „ohne gespeichertes Passwort“.
+    private let passwords: PasswordStore?
+    private var rejectionWatch: RejectedPasswordWatch = RejectedPasswordWatch()
+
+    /// plink hat das gespeicherte Passwort abgelehnt (falsches Passwort oder zweiter Faktor, M0 B12): dann bietet das
+    /// Fenster „Ohne gespeichertes Passwort verbinden“ an. Ein Server könnte den Text auch selbst ausgeben – mehr als
+    /// dieses Angebot bewirkt er nicht. Gilt nur, wenn plink danach mit einem Fehler endet und man nicht selbst trennt.
+    private(set) var storedPasswordRejected: Bool = false
+    /// Diese Verbindung übergibt ein gespeichertes Passwort an plink.
+    private(set) var usesStoredPassword: Bool = false
 
     /// `puttyDirectory` nur für Tests ändern (eigener Ordner statt Application Support, RL 3.9).
     init(endpoint: Endpoint, connectionProtocol: ConnectionProtocol,
@@ -47,25 +54,36 @@ final class Connection {
         self.puttyDirectory = puttyDirectory
         quickSession = try SessionFile.quickConnect(to: endpoint, using: connectionProtocol)
         sessionName = AppIdentity.quickSessionPrefix + UUID().uuidString
+        passwords = nil
     }
 
+    /// `passwords`: `nil` verbindet ohne gespeichertes Passwort (plink fragt im Terminal).
     init(savedSession name: String,
-         puttyDirectory: @escaping @MainActor () throws -> PuTTYDirectory = AppIdentity.puttyDirectory) throws(InputError) {
+         puttyDirectory: @escaping @MainActor () throws -> PuTTYDirectory = AppIdentity.puttyDirectory,
+         passwords: PasswordStore? = AppIdentity.passwords) throws(InputError) {
         try SessionName.check(name, reservedPrefix: AppIdentity.quickSessionPrefix)
         target = .saved(name)
         self.puttyDirectory = puttyDirectory
         quickSession = nil
         sessionName = name
+        self.passwords = passwords
     }
 
     /// Dieselbe Verbindung noch einmal (neue Schnellsitzung bzw. dieselbe gespeicherte Sitzung).
-    func again() throws(InputError) -> Connection {
+    /// `withStoredPassword: false` nach einem abgelehnten Passwort: plink fragt dann selbst (z. B. für 2FA).
+    func again(withStoredPassword: Bool = true) throws(InputError) -> Connection {
         switch target {
         case .quick(let endpoint, let connectionProtocol):
             try Connection(endpoint: endpoint, connectionProtocol: connectionProtocol, puttyDirectory: puttyDirectory)
         case .saved(let name):
-            try Connection(savedSession: name, puttyDirectory: puttyDirectory)
+            try Connection(savedSession: name, puttyDirectory: puttyDirectory, passwords: withStoredPassword ? passwords : nil)
         }
+    }
+
+    /// Für den Inspektor: Die Sitzung hat ein gespeichertes Passwort (fragt den Schlüsselbund nicht nach dem Inhalt).
+    var hasStoredPassword: Bool {
+        if case .saved(let name) = target, let passwords { return passwords.contains(session: name) }
+        return false
     }
 
     /// Gefahren, die vor jedem Verbinden bestätigt werden müssen (S4), auch aus Sitzungen, die als SSH-Proxy geladen
@@ -88,25 +106,40 @@ final class Connection {
     func start(columns: Int, rows: Int) throws(TerminalProcess.Failure) {
         let directory: PuTTYDirectory
         let command: PlinkCommand
+        let secret: Data?
         do {
             directory = try puttyDirectory()
             if let quickSession { try directory.write(quickSession, sessionName: sessionName) }
+            secret = storedPassword(in: directory)
             command = try PlinkCommand(sessionName: sessionName, puttyDirectory: directory.url.path,
-                                       parentEnvironment: ProcessInfo.processInfo.environment)
+                                       parentEnvironment: ProcessInfo.processInfo.environment,
+                                       passwordFromPipe: secret != nil)
         } catch {
             throw TerminalProcess.Failure(message: "Sitzung konnte nicht vorbereitet werden: \(error.localizedDescription)")
         }
         let temporary: String? = quickSession == nil ? nil : sessionName
+        process.onOutput = { [weak self] bytes in
+            guard let self else { return }
+            if self.usesStoredPassword { self.rejectionWatch.scan(bytes) }
+            self.onOutput?(bytes)
+        }
         process.onExit = { [weak self] status in
             if let temporary { directory.removeSession(named: temporary) }
             AppLog.connection.info("Verbindung beendet, Status \(status, privacy: .public)")
             guard let self else { return }
+            self.storedPasswordRejected = self.rejectionWatch.found && !self.hungUpByUser && status != 0
             // Selbst getrennt: kein „Signal 1“ anzeigen
-            self.onEnd?(self.hungUpByUser ? "Verbindung getrennt." : TerminalProcess.describe(status: status))
+            if self.hungUpByUser {
+                self.onEnd?("Verbindung getrennt.")
+            } else if self.storedPasswordRejected {
+                self.onEnd?("Das gespeicherte Passwort wurde nicht angenommen.")
+            } else {
+                self.onEnd?(TerminalProcess.describe(status: status))
+            }
         }
         do {
             try process.start(executable: AppIdentity.plinkPath, arguments: command.arguments,
-                              environment: command.environment, columns: columns, rows: rows)
+                              environment: command.environment, columns: columns, rows: rows, secret: secret)
         } catch {
             if let temporary { directory.removeSession(named: temporary) }
             process.onExit = nil
@@ -115,10 +148,52 @@ final class Connection {
         AppLog.connection.info("Verbindung gestartet zu \(self.displayName, privacy: .private(mask: .hash))")
     }
 
+    /// Passwort aus dem Schlüsselbund, nur wenn es zum aktuellen Ziel der Sitzung gehört (S1). Gehört es zu einem
+    /// anderen Ziel, sagt ein Hinweis im Terminal, warum plink fragt.
+    private func storedPassword(in directory: PuTTYDirectory) -> Data? {
+        guard let passwords, case .saved(let name) = target,
+              let file = try? directory.read(sessionNamed: name), let passwordTarget = file.passwordTarget else { return nil }
+        switch passwords.lookup(session: name, target: passwordTarget) {
+        case .found(let data):
+            // shortcut: Das Passwort liegt als unveränderliche CFData aus dem Schlüsselbund vor und lässt sich nicht
+            // überschreiben, nur freigeben (geschieht nach dem Start); löschbar wäre es erst mit einer eigenen Kopie aus
+            // dem Schlüsselbund-Aufruf in einen selbst verwalteten Puffer – bei Bedarf in der Härtung
+            usesStoredPassword = true
+            return data
+        case .otherTarget:
+            let note: String = "\u{1B}[2m[\(AppIdentity.name)] Gespeichertes Passwort nicht verwendet: Es gehört zu einem "
+                + "anderen Benutzer, Server oder Port. In der Sitzung neu sichern.\u{1B}[0m\r\n"
+            onOutput?(ArraySlice(Array(note.utf8)))
+            return nil
+        case .none:
+            return nil
+        }
+    }
+
     func send(_ data: ArraySlice<UInt8>) { process.send(data) }
     func resize(columns: Int, rows: Int) { process.resize(columns: columns, rows: rows) }
     func hangUp() {
         hungUpByUser = process.isRunning
         process.hangUp()
+    }
+}
+
+/// Erkennt plinks Meldung über ein abgelehntes gespeichertes Passwort, auch wenn sie über zwei Lese-Blöcke verteilt
+/// ankommt. Behält dafür nur das Ende der Ausgabe (eine Meldungslänge minus eins).
+struct RejectedPasswordWatch {
+    private static let message: [UInt8] = Array("Configured password was not accepted".utf8)
+    private var recent: [UInt8] = []
+    private(set) var found: Bool = false
+
+    mutating func scan(_ bytes: ArraySlice<UInt8>) {
+        guard !found else { return }
+        recent.append(contentsOf: bytes)
+        if recent.firstRange(of: Self.message) != nil {
+            found = true
+            recent = []
+            return
+        }
+        let keep: Int = Self.message.count - 1
+        if recent.count > keep { recent.removeFirst(recent.count - keep) }
     }
 }

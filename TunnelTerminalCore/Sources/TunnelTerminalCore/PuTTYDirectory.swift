@@ -22,13 +22,17 @@ public struct PuTTYDirectory: Sendable {
 
     /// Schreibt eine Sitzung atomar (Zwischendatei mit `0600`, dann umbenennen), damit plink nie eine halbe Datei liest.
     public func write(_ file: SessionFile, sessionName: String) throws {
-        let target: URL = fileURL(sessionName)
-        let temporary: URL = sessions.appendingPathComponent(Self.temporaryPrefix + UUID().uuidString)
+        try writeAtomically(file.contents, to: fileURL(sessionName), temporaryIn: sessions)
+    }
+
+    /// Zwischendatei mit `0600` im selben Ordner, dann umbenennen.
+    private func writeAtomically(_ data: Data, to target: URL, temporaryIn folder: URL) throws {
+        let temporary: URL = folder.appendingPathComponent(Self.temporaryPrefix + UUID().uuidString)
         let descriptor: Int32 = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         let handle: FileHandle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         do {
-            try handle.write(contentsOf: file.contents)
+            try handle.write(contentsOf: data)
             try handle.synchronize()
             try handle.close()
             guard rename(temporary.path, target.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -80,10 +84,15 @@ public struct PuTTYDirectory: Sendable {
 
     /// Liest eine Sitzungsdatei: nur reguläre Dateien (keine Verweise) bis `maximumSessionSize`.
     static func readSession(at url: URL) throws -> SessionFile {
+        try SessionFile(contents: readRegularFile(at: url, limit: maximumSessionSize))
+    }
+
+    /// Nur reguläre Dateien (keine Verweise) bis `limit` Bytes.
+    private static func readRegularFile(at url: URL, limit: Int) throws -> Data {
         let attributes: [FileAttributeKey: Any] = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular,
-              let size = attributes[.size] as? Int, size <= maximumSessionSize else { throw InputError.invalidFile }
-        return try SessionFile(contents: Data(contentsOf: url))
+              let size = attributes[.size] as? Int, size <= limit else { throw InputError.invalidFile }
+        return try Data(contentsOf: url)
     }
 
     private func fileURL(_ sessionName: String) -> URL {
@@ -102,5 +111,31 @@ public struct PuTTYDirectory: Sendable {
         for name in sessionFileNames() where name.hasPrefix(encoded) || name.hasPrefix(Self.temporaryPrefix) {
             unlink(sessions.appendingPathComponent(name).path)
         }
+    }
+
+    // MARK: - Bekannte Hostschlüssel (`sshhostkeys`, schreibt plink)
+
+    private var hostKeysURL: URL { url.appendingPathComponent("sshhostkeys") }
+
+    /// Liest `sshhostkeys`; fehlt die Datei, ist die Liste leer. Nur eine reguläre Datei (kein Verweis).
+    public func knownHostKeys() throws -> KnownHostKeys {
+        guard Self.entryExists(at: hostKeysURL) else {
+            return KnownHostKeys(contents: Data())
+        }
+        return KnownHostKeys(contents: try Self.readRegularFile(at: hostKeysURL, limit: KnownHostKeys.maximumSize))
+    }
+
+    /// Entfernt Einträge (z. B. nach einer Neuinstallation des Servers): plink fragt beim nächsten Verbinden wieder.
+    /// Schreibt atomar mit `0600`, damit plink nie eine halbe Datei liest.
+    public func removeKnownHostKeys(_ ids: Set<String>) throws {
+        var keys: KnownHostKeys = try knownHostKeys()
+        keys.remove(ids)
+        try writeAtomically(keys.contents, to: hostKeysURL, temporaryIn: url)
+    }
+
+    /// Gibt es den Eintrag – ohne Verweisen zu folgen (ein Verweis wird dann beim Lesen abgelehnt)?
+    private static func entryExists(at url: URL) -> Bool {
+        var status: stat = stat()
+        return lstat(url.path, &status) == 0
     }
 }

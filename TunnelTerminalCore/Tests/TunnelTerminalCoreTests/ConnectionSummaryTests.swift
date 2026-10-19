@@ -16,6 +16,7 @@ struct ConnectionSummaryTests {
         #expect(summary.user == "test")
         #expect(summary.protocolTitle == "SSH")
         #expect(summary.authentication == "Agent, sonst Passwort")
+        #expect(summary.endsWithPassword)
     }
 
     @Test func missingUserAsksWhenConnecting() throws {
@@ -28,6 +29,7 @@ struct ConnectionSummaryTests {
         let summary: ConnectionSummary = ConnectionSummary(file: try file(
             "HostName=server.example\nProtocol=ssh\nPortNumber=22\nPublicKeyFile=/Pfad/zum/schluessel.ppk\nTryAgent=0\n"))
         #expect(summary.authentication == "Schlüsseldatei „schluessel.ppk“")
+        #expect(!summary.endsWithPassword)
     }
 
     @Test(arguments: [("TryAgent=0\n", "Passwort"), ("TryAgent=1\n", "Agent, sonst Passwort"),

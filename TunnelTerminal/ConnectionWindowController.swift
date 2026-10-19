@@ -36,6 +36,9 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     /// Gespeicherte Sitzung, die für den Status in der Seitenleiste als verbunden zählt.
     private var countedSession: String?
     private var closingConfirmed: Bool = false
+    /// Server und Port, deren bekannte Hostschlüssel der Inspektor zeigt (nur SSH, M3).
+    private var hostKeyServer: (host: String, port: Int)?
+    private var lastHostKeyCheck: Date = .distantPast
 
     private static let registryType: UTType = UTType(filenameExtension: "reg") ?? .data
     private static let disconnectItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("trennen")
@@ -193,7 +196,27 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     private func prepare(_ newConnection: Connection) {
         connection = newConnection
         window?.title = SessionWarning.visible(newConnection.displayName)
-        info.summary = newConnection.settings().map(ConnectionSummary.init(file:))
+        let settings: SessionFile? = newConnection.settings()
+        info.summary = settings.map(ConnectionSummary.init(file:))
+        info.hasStoredPassword = newConnection.hasStoredPassword
+        hostKeyServer = settings?.hostKeyServer
+        refreshHostKeys()
+    }
+
+    /// Liest `sshhostkeys` neu (klein, Lesen ist billig). Während der Server noch unbekannt ist, nach jeder Ausgabe
+    /// höchstens einmal pro Sekunde: So erscheint der Schlüssel, sobald man ihn in plinks Abfrage bestätigt hat.
+    private func refreshHostKeys() {
+        info.showsHostKeys = hostKeyServer != nil
+        lastHostKeyCheck = .now
+        guard let hostKeyServer, let keys = try? puttyDirectory().knownHostKeys() else {
+            info.hostKeys = []
+            return
+        }
+        info.hostKeys = keys.entries(host: hostKeyServer.host, port: hostKeyServer.port)
+    }
+
+    private func outputArrived() {
+        if hostKeyServer != nil, info.hostKeys.isEmpty, Date.now.timeIntervalSince(lastHostKeyCheck) >= 1 { refreshHostKeys() }
     }
 
     private func showTerminal() {
@@ -211,7 +234,10 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         // nie zwei plink in einem Tab: das erste ließe sich sonst nicht mehr trennen
         guard let terminal, connection?.isRunning != true else { return }
         prepare(newConnection)
-        newConnection.onOutput = { [weak terminal] bytes in terminal?.feed(byteArray: bytes) }
+        newConnection.onOutput = { [weak terminal, weak self] bytes in
+            terminal?.feed(byteArray: bytes)
+            self?.outputArrived()
+        }
         newConnection.onEnd = { [weak self] message in self?.connectionEnded(message) }
         let size: TerminalDimensions = terminal.terminalDimensions
         do {
@@ -223,6 +249,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         }
         info.isRunning = true
         info.endMessage = nil
+        info.hasStoredPassword = newConnection.usesStoredPassword
         if case .saved(let name) = newConnection.target {
             connected.started(name)
             countedSession = name
@@ -233,6 +260,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         releaseCountedSession()
         info.isRunning = false
         info.endMessage = message
+        refreshHostKeys()
         showBanner(message)
         NSAccessibility.post(element: window as Any, notification: .announcementRequested,
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
@@ -244,9 +272,11 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     }
 
     private func showBanner(_ message: String) {
-        let content: NSHostingView<EndedBanner> = NSHostingView(rootView: EndedBanner(message: message) { [weak self] in
-            self?.reconnect(nil)
-        })
+        var banner: EndedBanner = EndedBanner(message: message) { [weak self] in self?.reconnect(nil) }
+        if connection?.storedPasswordRejected == true {
+            banner.reconnectWithoutStoredPassword = { [weak self] in self?.reconnect(withStoredPassword: false) }
+        }
+        let content: NSHostingView<EndedBanner> = NSHostingView(rootView: banner)
         content.sizingOptions = [.intrinsicContentSize]
         area.showBanner(content)
     }
@@ -254,12 +284,17 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     // MARK: - Menübefehle: Verbindung
 
     @objc func reconnect(_ sender: Any?) {
+        reconnect(withStoredPassword: true)
+    }
+
+    /// `withStoredPassword: false` nach einem abgelehnten gespeicherten Passwort (2FA, falsches Passwort): plink fragt.
+    private func reconnect(withStoredPassword: Bool) {
         // Während einer Rückfrage (Sheet) nicht noch eine stellen
         guard window?.attachedSheet == nil, let previous = connection, !previous.isRunning else { return }
         area.showBanner(nil)
         terminal?.feed(text: "\r\n")
         do {
-            confirmAndStart(try previous.again())
+            confirmAndStart(try previous.again(withStoredPassword: withStoredPassword))
         } catch {
             connectionEnded(error.message)
         }

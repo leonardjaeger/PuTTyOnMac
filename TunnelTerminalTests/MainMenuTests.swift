@@ -64,4 +64,14 @@ final class MainMenuTests: XCTestCase {
         XCTAssertEqual(byTitle["Löschen"]?.keyEquivalent, "\u{8}")
         XCTAssertEqual(byTitle["Duplizieren"]?.keyEquivalent, "")
     }
+
+    /// Schlüssel und bekannte Hostschlüssel im Fenster-Menü, der Agent-Hinweis in der Hilfe (M3).
+    func testKeyWindowsInMenus() throws {
+        let menu: NSMenu = MainMenu.build()
+        let window: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Fenster" }?.submenu)
+        XCTAssertTrue(window.items.contains { $0.action == #selector(AppDelegate.showKeys(_:)) })
+        XCTAssertTrue(window.items.contains { $0.action == #selector(AppDelegate.showKnownHosts(_:)) })
+        let help: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Hilfe" }?.submenu)
+        XCTAssertEqual(help.items.first?.action, #selector(AppDelegate.showKeys(_:)))
+    }
 }

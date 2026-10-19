@@ -1,3 +1,4 @@
+import Security
 import TunnelTerminalCore
 import XCTest
 @testable import TunnelTerminal
@@ -221,5 +222,22 @@ final class SessionLibraryTests: XCTestCase {
         let name: String = String(repeating: "x", count: 199)
         try library.save(SessionFile(), as: name)
         XCTAssertThrowsError(try library.duplicate([name], undoManager: nil))
+    }
+
+    /// Gespeicherte Passwörter folgen der Sitzung (M3): Umbenennen nimmt sie mit, Löschen entfernt sie.
+    func testPasswordFollowsRenameAndDelete() throws {
+        let store: PasswordStore = PasswordStore(service: "\(AppIdentity.logSubsystem).tests.\(UUID().uuidString)")
+        addTeardownBlock { SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: store.service] as CFDictionary) }
+        let withPasswords: SessionLibrary = SessionLibrary(directory: library.directory, passwords: store)
+        try withPasswords.save(try session(host: "server.example", user: "test"), as: "Alt")
+        try store.save("geheim", session: "Alt", target: "test@server.example:22")
+        try step { try withPasswords.rename("Alt", to: "Heim/Neu", undoManager: undoManager) }
+        XCTAssertFalse(store.contains(session: "Alt"))
+        XCTAssertTrue(store.contains(session: "Heim/Neu"))
+        try step { try withPasswords.delete(["Heim/Neu"], undoManager: undoManager) }
+        XCTAssertFalse(store.contains(session: "Heim/Neu"))
+        undoManager.undo()
+        XCTAssertEqual(withPasswords.names, ["Heim/Neu"])   // Sitzung zurück, Passwort bewusst nicht
+        XCTAssertFalse(store.contains(session: "Heim/Neu"))
     }
 }

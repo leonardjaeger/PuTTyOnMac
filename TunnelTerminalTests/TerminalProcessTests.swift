@@ -12,7 +12,7 @@ final class TerminalProcessTests: XCTestCase {
     }
 
     private func launch(_ executable: String, _ arguments: [String] = [], environment: [String] = ["PATH=/usr/bin:/bin"],
-                        columns: Int = 80, rows: Int = 24) throws -> Run {
+                        columns: Int = 80, rows: Int = 24, secret: Data? = nil) throws -> Run {
         let process: TerminalProcess = TerminalProcess()
         let ended: XCTestExpectation = expectation(description: "Prozessende")
         var bytes: [UInt8] = []
@@ -20,7 +20,7 @@ final class TerminalProcessTests: XCTestCase {
         process.onOutput = { bytes.append(contentsOf: $0) }
         process.onExit = { status = $0; ended.fulfill() }
         try process.start(executable: executable, arguments: arguments, environment: environment,
-                          columns: columns, rows: rows)
+                          columns: columns, rows: rows, secret: secret)
         return Run(process: process, ended: ended,
                    output: { String(decoding: bytes, as: UTF8.self) }, status: { status })
     }
@@ -105,5 +105,30 @@ final class TerminalProcessTests: XCTestCase {
         XCTAssertEqual(TerminalProcess.describe(status: 0), "Verbindung beendet.")
         XCTAssertEqual(TerminalProcess.describe(status: 1 << 8), "Verbindung beendet (Exit-Code 1).")
         XCTAssertEqual(TerminalProcess.describe(status: SIGHUP), "Verbindung beendet (Signal 1).")
+    }
+
+    /// Passwort aus dem Schlüsselbund (M3, S1): nur über eine Pipe auf fd 3, eine Zeile, nicht in der Prozessliste.
+    func testSecretArrivesOnlyOnDescriptorThree() throws {
+        let leak: Int32 = open("/dev/null", O_RDONLY)
+        defer { close(leak) }
+        let probe: String = "for n in 0 1 2 3 \(leak); do if : <&$n; then echo \"offen $n\"; else echo \"zu $n\"; fi; done 2>/dev/null; "
+            + "IFS= read -r p <&3; echo \"[$p]\"; if IFS= read -r rest <&3; then echo mehr; else echo ende; fi; ps -o args= -p $$"
+        let (output, status) = finish(try launch("/bin/sh", ["-c", probe], secret: Data("geh eim ä".utf8)))
+        XCTAssertEqual(status, 0)
+        let lines: [String] = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        XCTAssertEqual(Array(lines.prefix(7)), ["offen 0", "offen 1", "offen 2", "offen 3", "zu \(leak)", "[geh eim ä]", "ende"])
+        XCTAssertFalse(lines.dropFirst(7).joined().contains("geh eim"), output)
+    }
+
+    func testWithoutSecretDescriptorThreeStaysClosed() throws {
+        let (output, _) = finish(try launch("/bin/sh", ["-c", "if : <&3; then echo offen; else echo zu; fi 2>/dev/null"]))
+        XCTAssertEqual(output.trimmingCharacters(in: .whitespacesAndNewlines), "zu")
+    }
+
+    func testOversizedSecretIsRefused() {
+        let process: TerminalProcess = TerminalProcess()
+        XCTAssertThrowsError(try process.start(executable: "/bin/cat", arguments: [], environment: [], columns: 80, rows: 24,
+                                               secret: Data(repeating: 0x61, count: TerminalProcess.secretLimit + 1)))
+        XCTAssertFalse(process.isRunning)
     }
 }

@@ -74,10 +74,16 @@ enum MainMenu {
         window.addItem(item("Im Dock ablegen", #selector(NSWindow.performMiniaturize(_:)), "m"))
         window.addItem(item("Zoomen", #selector(NSWindow.performZoom(_:))))
         window.addItem(.separator())
+        window.addItem(item("Schlüssel", #selector(AppDelegate.showKeys(_:))))
+        window.addItem(item("Bekannte Hostschlüssel", #selector(AppDelegate.showKnownHosts(_:))))
+        window.addItem(.separator())
         window.addItem(item("Alle nach vorne bringen", #selector(NSApplication.arrangeInFront(_:))))
         NSApp.windowsMenu = window
 
-        NSApp.helpMenu = submenu("Hilfe", in: main)
+        // Hinweis zur Anmeldung mit Schlüssel und macOS-Agent (Plan M3) steht im Fenster „Schlüssel“
+        let help: NSMenu = submenu("Hilfe", in: main)
+        help.addItem(item("Anmeldung mit Schlüssel und Agent", #selector(AppDelegate.showKeys(_:))))
+        NSApp.helpMenu = help
         return main
     }
 

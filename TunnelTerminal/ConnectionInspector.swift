@@ -1,8 +1,8 @@
 import SwiftUI
 import TunnelTerminalCore
 
-/// Inspektor rechts im Hauptfenster (Plan 3.1). In M2 nur der Abschnitt „Verbindung“; weitere Abschnitte kommen mit
-/// ihren Funktionen (Hostschlüssel M3, Tunnel M5, Dateien M6), nie als Platzhalter.
+/// Inspektor rechts im Hauptfenster (Plan 3.1): Abschnitte „Verbindung“ (M2) und „Hostschlüssel“ (M3, nur SSH);
+/// weitere kommen mit ihren Funktionen (Tunnel M5, Dateien M6), nie als Platzhalter.
 struct ConnectionInspector: View {
     let info: ConnectionInfo
 
@@ -26,7 +26,11 @@ struct ConnectionInspector: View {
                         }
                     }
                     LabeledContent("Verbindungsart", value: summary.protocolTitle)
-                    LabeledContent("Anmeldung", value: summary.authentication)
+                    let fromKeychain: Bool = info.hasStoredPassword && summary.endsWithPassword
+                    LabeledContent("Anmeldung", value: summary.authentication + (fromKeychain ? " aus dem Schlüsselbund" : ""))
+                }
+                if info.showsHostKeys {
+                    HostKeyInspectorSection(info: info)
                 }
             }
             .formStyle(.grouped)

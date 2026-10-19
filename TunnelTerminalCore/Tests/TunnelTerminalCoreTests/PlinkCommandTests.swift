@@ -45,4 +45,11 @@ struct PlinkCommandTests {
             try PlinkCommand(sessionName: name, puttyDirectory: "/p", parentEnvironment: [:])
         }
     }
+
+    @Test("Gespeichertes Passwort: nur -pwfile mit fd 3, nie das Passwort selbst (S1)")
+    func passwordComesFromPipe() throws {
+        let command: PlinkCommand = try PlinkCommand(sessionName: "Heim/Server", puttyDirectory: "/p", parentEnvironment: [:],
+                                                     passwordFromPipe: true)
+        #expect(command.arguments == ["-load", "Heim/Server", "-pwfile", "/dev/fd/3"])
+    }
 }

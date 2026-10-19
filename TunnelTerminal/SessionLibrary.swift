@@ -14,6 +14,8 @@ final class SessionLibrary {
     }
 
     let directory: PuTTYDirectory
+    /// Gespeicherte Passwörter (M3); `nil` in Tests ohne Schlüsselbund. Löschen und Umbenennen nehmen sie mit.
+    let passwords: PasswordStore?
     private let reservedPrefix: String
 
     /// Alle gespeicherten Sitzungen, sortiert, ohne Schnellverbindungen; „Default Settings“, falls vorhanden.
@@ -24,9 +26,10 @@ final class SessionLibrary {
     /// Server je Sitzung, für die Suche.
     private var hosts: [String: String] = [:]
 
-    init(directory: PuTTYDirectory, reservedPrefix: String = AppIdentity.quickSessionPrefix) {
+    init(directory: PuTTYDirectory, reservedPrefix: String = AppIdentity.quickSessionPrefix, passwords: PasswordStore? = nil) {
         self.directory = directory
         self.reservedPrefix = reservedPrefix
+        self.passwords = passwords
         reload()
     }
 
@@ -109,6 +112,7 @@ final class SessionLibrary {
             throw InputError.nameTaken
         }
         try directory.renameSession(from: oldName, to: newName)
+        passwords?.rename(from: oldName, to: newName)
         reload(countsAsChange: true)
         undoManager?.registerUndo(withTarget: self) { library in
             try? library.rename(newName, to: oldName, undoManager: undoManager)
@@ -163,6 +167,8 @@ final class SessionLibrary {
                 try directory.write(file, sessionName: name)
             } else {
                 directory.removeSession(named: name)
+                // Das Passwort geht mit der Sitzung (Plan M3); ⌘Z bringt die Sitzung zurück, das Passwort nicht
+                passwords?.delete(session: name)
             }
             previous.append((name, before))
         }

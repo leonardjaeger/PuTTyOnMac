@@ -61,7 +61,7 @@ if [ ! -f "$stamp" ]; then
   # Saubere Umgebung: die Xcode-Variablen sollen den PuTTY-Bau nicht beeinflussen
   if ! env -i HOME="$HOME" PATH="$tool_path" cmake -S "$cache/src" -B "$cache/bau" -DPUTTY_GTK_VERSION=NONE \
       -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-      -DCMAKE_C_FLAGS="$map" > "$cache/konfig.log" 2>&1; then
+      -DPUTTY_GSSAPI=OFF -DCMAKE_C_FLAGS="$map" > "$cache/konfig.log" 2>&1; then
     tail -40 "$cache/konfig.log"; fail "cmake-Konfiguration fehlgeschlagen."
   fi
   if ! env -i HOME="$HOME" PATH="$tool_path" cmake --build "$cache/bau" --target "${TOOLS[@]}" \
@@ -72,6 +72,8 @@ if [ ! -f "$stamp" ]; then
     strip -x "$cache/bau/$tool"
     # [s] statt s: der Grundsatz-Test sucht den wörtlichen Pfadanfang
     if strings "$cache/bau/$tool" | grep -qE '/User[s]/'; then fail "$tool enthält einen Pfad mit Benutzerordner (S14)."; fi
+    # Ohne GSSAPI lädt plink keine fremden Bibliotheken (dlopen), auch nicht über GSSCustom einer Sitzung (M2/M3)
+    if strings "$cache/bau/$tool" | grep -q 'libgssapi'; then fail "$tool enthält noch GSSAPI-Unterstützung."; fi
     libraries="$(otool -L "$cache/bau/$tool" | tail -n +2 | grep -v '/usr/lib/libSystem.B.dylib' || true)"
     [ -z "$libraries" ] || fail "$tool hängt an weiteren Bibliotheken: $libraries"
   done

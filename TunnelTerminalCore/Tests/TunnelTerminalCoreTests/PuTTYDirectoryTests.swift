@@ -152,4 +152,36 @@ struct PuTTYDirectoryTests {
         }
         #expect(directory.sessionNames() == ["A", "Mein Server"])
     }
+
+    @Test("Bekannte Hostschlüssel: fehlende Datei ist leer; Entfernen schreibt atomar mit 0600 und lässt den Rest")
+    func removesKnownHostKeys() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        #expect(try directory.knownHostKeys().entries.isEmpty)
+
+        let file: URL = directory.url.appendingPathComponent("sshhostkeys")
+        let text: String = "ssh-ed25519@22:server.example 0x1,0x2\nrsa2@22:server.example 0x3,0x5\n"
+        try Data(text.utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)   // wie ohne umask
+        try directory.removeKnownHostKeys(["ssh-ed25519@22:server.example"])
+        #expect(String(decoding: try Data(contentsOf: file), as: UTF8.self) == "rsa2@22:server.example 0x3,0x5\n")
+        #expect(try mode(file) == 0o600)
+        #expect(try directory.knownHostKeys().entries.map(\.id) == ["rsa2@22:server.example"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.url.path).sorted() == ["sessions", "sshhostkeys"])
+    }
+
+    @Test("Bekannte Hostschlüssel: ein Verweis statt Datei wird weder gelesen noch überschrieben")
+    func refusesLinkedKnownHostKeys() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        let elsewhere: URL = base.appendingPathComponent("anderswo")
+        try Data("ssh-ed25519@22:server.example 0x1,0x2\n".utf8).write(to: elsewhere)
+        try FileManager.default.createSymbolicLink(at: directory.url.appendingPathComponent("sshhostkeys"),
+                                                   withDestinationURL: elsewhere)
+        #expect(throws: InputError.invalidFile) { try directory.knownHostKeys() }
+        #expect(throws: InputError.invalidFile) { try directory.removeKnownHostKeys(["ssh-ed25519@22:server.example"]) }
+        #expect(try Data(contentsOf: elsewhere).count > 0)
+    }
 }

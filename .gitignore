@@ -26,6 +26,10 @@ build/u1/*
 build/m2/*
 !build/m2/putty-zahlen-schluessel.py
 !build/m2/*.sh
+# M3: Hilfsskripte (Machbarkeit, Oberflächenprüfung); schritt.txt bleibt lokal
+!build/m3/
+build/m3/*
+!build/m3/*.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

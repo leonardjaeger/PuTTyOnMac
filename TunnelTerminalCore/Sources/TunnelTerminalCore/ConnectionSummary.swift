@@ -9,6 +9,9 @@ public struct ConnectionSummary: Equatable, Sendable {
     public let user: String?
     public let protocolTitle: String
     public let authentication: String
+    /// Ohne Schlüsseldatei endet die Anmeldung beim Passwort (Agent vorher oder nicht): dort setzt ein gespeichertes
+    /// Passwort an (M3).
+    public let endsWithPassword: Bool
 
     public init(file: SessionFile) {
         let host: String = file.hostName
@@ -17,6 +20,7 @@ public struct ConnectionSummary: Equatable, Sendable {
         user = file.userName.isEmpty ? nil : SessionWarning.visible(file.userName)
         let rawProtocol: String = file.value(forKey: "Protocol") ?? "ssh"
         protocolTitle = file.connectionProtocol?.title ?? "Anderes (\(SessionWarning.visible(rawProtocol)))"
+        endsWithPassword = file.connectionProtocol == .ssh && (file.value(forKey: "PublicKeyFile") ?? "").isEmpty
         switch file.connectionProtocol {
         case .ssh:
             let keyFile: String = file.value(forKey: "PublicKeyFile") ?? ""

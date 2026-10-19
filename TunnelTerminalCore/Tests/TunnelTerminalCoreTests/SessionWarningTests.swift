@@ -71,6 +71,7 @@ struct SessionWarningTests {
             ProxyPort=2222
             ProxyPassword=geheim
             HostName=server.example
+            Protocol=ssh
             PortNumber=2200
 
             """)
@@ -97,18 +98,19 @@ struct SessionWarningTests {
         #expect(found.allSatisfy { !$0.message.isEmpty })
     }
 
-    @Test("Eigene GSSAPI-Bibliothek: plink lädt sie beim Verbinden (dlopen) und führt damit fremden Code aus")
+    @Test("Eigene GSSAPI-Bibliothek: nur noch Hinweis – plink ist seit M3 ohne GSSAPI gebaut und lädt sie nicht")
     func customGSSLibrary() throws {
         let found: [SessionWarning] = try warnings("GSSCustom=/tmp/x.dylib\n")
         #expect(found == [.gssLibrary("/tmp/x.dylib")])
-        #expect(found[0].isDangerous)
+        #expect(!found[0].isDangerous)
+        #expect(!found[0].blocksPreselection)
+        #expect(found[0].message.contains("andere PuTTY"))
         #expect(try warnings("GSSCustom=\n").isEmpty)
     }
 
     @Test("Vorauswahl beim Import: nicht bei Gefährlichem und nicht, wenn eine Datei auf dem Mac geschrieben wird")
     func preselection() {
         #expect(SessionWarning.localProxyCommand("x").blocksPreselection)
-        #expect(SessionWarning.gssLibrary("x").blocksPreselection)
         #expect(SessionWarning.sessionLog("x").blocksPreselection)
         #expect(!SessionWarning.sessionLog("x").isDangerous)
         #expect(!SessionWarning.remoteCommand("x").blocksPreselection)
@@ -137,7 +139,7 @@ struct SessionWarningTests {
         }
         let a: SessionFile = try #require(try load("A"))
         #expect(try SessionWarning.requiringConfirmation(for: a, load: load) == [
-            .viaProxy("B", .localProxyCommand("nc x")), .viaProxy("B", .gssLibrary("/tmp/g.dylib"))
+            .viaProxy("B", .localProxyCommand("nc x"))
         ])
         // Kein Sitzungsname: PuTTY nimmt die Standardeinstellungen und ersetzt nur den Server
         let hostname: SessionFile = try #require(try load("Hostname"))

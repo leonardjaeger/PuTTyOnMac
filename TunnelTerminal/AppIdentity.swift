@@ -3,10 +3,13 @@ import TunnelTerminalCore
 
 /// Name und feste Kennungen an einer Stelle (umbenannt in U1; Bundle-ID und Schlüsselbund hängen daran).
 enum AppIdentity {
-    static let name: String = "TunnelTerminal"
-    static let logSubsystem: String = "de.leonardjaeger.tunnelterminal"
+    nonisolated static let name: String = "TunnelTerminal"
+    nonisolated static let logSubsystem: String = "de.leonardjaeger.tunnelterminal"
     /// Präfix der vorübergehenden Sitzungen für Schnellverbindungen im eigenen PuTTY-Ordner.
     static let quickSessionPrefix: String = "\(name)-Schnell-"
+
+    /// Passwörter gespeicherter Sitzungen (M3, S1); Dienstname im Schlüsselbund hängt an der Bundle-ID.
+    static let passwords: PasswordStore = PasswordStore(service: "\(logSubsystem).passwort")
 
     /// plink aus dem App-Paket (gebaut von Scripts/build-putty.sh, nie ein fremder Build).
     static var plinkPath: String {

@@ -10,7 +10,8 @@ public indirect enum SessionWarning: Equatable, Sendable {
     case portForwardings(String)
     /// PuTTY schreibt ein Sitzungsprotokoll in diese Datei.
     case sessionLog(String)
-    /// plink lädt diese GSSAPI-Bibliothek beim Verbinden (`dlopen`, unix/gss.c) – fremder Code im plink-Prozess.
+    /// Eigene GSSAPI-Bibliothek: andere PuTTY-Installationen laden sie (`dlopen`, unix/gss.c); das plink der App ist seit
+    /// M3 ohne GSSAPI gebaut (docs/M3-Recherche.md 1) – deshalb nur ein Hinweis, keine Rückfrage mehr.
     case gssLibrary(String)
     /// SSH-Proxy (`ProxyMethod` 6–8): Ist `ProxyHost` der Name einer gespeicherten Sitzung, lädt PuTTY deren Einstellungen.
     case proxySession(String)
@@ -22,7 +23,7 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Führt etwas auf diesem Mac aus: beim Import nicht vorausgewählt, vor jedem Verbinden eine Rückfrage.
     public var isDangerous: Bool {
         switch self {
-        case .localProxyCommand, .gssLibrary: true
+        case .localProxyCommand: true
         case .viaProxy(_, let warning): warning.isDangerous
         default: false
         }
@@ -43,7 +44,7 @@ public indirect enum SessionWarning: Equatable, Sendable {
         case .agentForwarding: "Agent-Weiterleitung: Der Server kann die Schlüssel aus dem ssh-agent dieses Macs benutzen."
         case .portForwardings(let rules): "Port-Weiterleitungen: \(Self.visible(rules))"
         case .sessionLog(let path): "Schreibt ein Sitzungsprotokoll nach: \(Self.visible(path))"
-        case .gssLibrary(let path): "Lädt beim Verbinden diese Programmbibliothek auf diesem Mac: \(Self.visible(path))"
+        case .gssLibrary(let path): "Nennt eine eigene GSSAPI-Bibliothek (\(Self.visible(path))). Diese App lädt sie nicht, andere PuTTY-Installationen schon."
         case .manualHostKeys: "Legt den Hostschlüssel des Servers fest; plink fragt dann nicht mehr nach."
         case .proxySession(let name): "Verbindet über den SSH-Proxy „\(Self.visible(name))“ (gespeicherte Sitzung oder Server)."
         case .viaProxy(let name, let warning): "Über die Proxy-Sitzung „\(Self.visible(name))“: \(warning.message)"

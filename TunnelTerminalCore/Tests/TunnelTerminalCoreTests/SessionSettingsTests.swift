@@ -147,4 +147,29 @@ struct SessionSettingsTests {
         try ssh.setValue("Sprung", forKey: "ProxyHost")
         #expect(ssh.proxyDescription == "SSH über „Sprung“")
     }
+
+    /// Fehler aus M3 (gemessen mit plink 0.85, docs/M3-Recherche.md 3.3): Ohne bekanntes `Protocol` nimmt plink SSH auf
+    /// Port 22 und ignoriert `PortNumber` (`settings.c`, `load_open_settings`). Inspektor, Hostschlüssel-Abschnitt und
+    /// Passwort-Bindung müssen denselben Port sehen wie plink.
+    @Test("Port wie plink: ohne bekanntes Protocol immer 22", arguments: [
+        ("HostName=a\nPortNumber=2222\n", 22),
+        ("HostName=a\nPortNumber=2222\nProtocol=unbekannt\n", 22),
+        ("HostName=a\nPortNumber=2222\nProtocol=ssh\n", 2222),
+        ("HostName=a\nPortNumber=23\nProtocol=telnet\n", 23),
+        ("HostName=a\nProtocol=raw\n", 22)
+    ])
+    func portLikePlink(text: String, port: Int) throws {
+        #expect(try SessionFile(contents: Data(text.utf8)).portNumber == port)
+    }
+
+    @Test("Port setzen schreibt Protocol=ssh dazu, wenn es fehlt (sonst wirkte der Port nicht)")
+    func settingPortMakesItEffective() throws {
+        var file: SessionFile = try SessionFile(contents: Data("HostName=a\n".utf8))
+        try file.setPortNumber(2222)
+        #expect(file.value(forKey: "Protocol") == "ssh")
+        #expect(file.portNumber == 2222)
+        var telnet: SessionFile = try SessionFile(contents: Data("Protocol=telnet\n".utf8))
+        try telnet.setPortNumber(2323)
+        #expect(telnet.value(forKey: "Protocol") == "telnet")
+    }
 }

@@ -3,14 +3,15 @@ import Foundation
 
 /// Startet ein Programm an einem eigenen Pseudo-Terminal (Weg B aus M0, Plan S8).
 ///
-/// - `posix_spawn` mit `POSIX_SPAWN_CLOEXEC_DEFAULT`: das Kind erbt nur 0/1/2 (keine Deskriptoren der App).
+/// - `posix_spawn` mit `POSIX_SPAWN_CLOEXEC_DEFAULT`: das Kind erbt nur 0/1/2 und, mit gespeichertem Passwort,
+///   fd 3 = Passwort-Pipe (keine Deskriptoren der App).
 /// - Die App öffnet die Slave-Seite selbst (`O_NOCTTY`) und setzt die Größe über den Master, solange der Slave
 ///   offen ist (M0, B13). Das Kind hat dadurch kein Steuerterminal und bekommt `SIGWINCH` von der App.
 /// - Neue Dateien des Kindes entstehen mit `0600` (umask 077), z. B. plinks `sshhostkeys`.
 /// - Solange das Kind läuft, hält sich das Objekt über seine Ereignisquellen selbst am Leben; nach dem Ende
 ///   (Kind abgeholt, Ausgabe gelesen) meldet es `onExit` mit dem `waitpid`-Status.
 final class TerminalProcess {
-    struct Failure: Error {
+    nonisolated struct Failure: Error {
         let message: String
     }
 
@@ -32,7 +33,10 @@ final class TerminalProcess {
 
     var isRunning: Bool { pid > 0 }
 
-    func start(executable: String, arguments: [String], environment: [String], columns: Int, rows: Int) throws(Failure) {
+    /// `secret`: Passwort aus dem Schlüsselbund; das Kind liest es als eine Zeile aus fd 3 (`plink -pwfile /dev/fd/3`,
+    /// M0 B5, S1). Es steht nie in Argumenten, Umgebung oder einer Datei.
+    func start(executable: String, arguments: [String], environment: [String], columns: Int, rows: Int,
+               secret: Data? = nil) throws(Failure) {
         guard pid == 0, master < 0 else { throw Failure(message: "Der Prozess läuft bereits.") }
         let newMaster: Int32 = posix_openpt(O_RDWR | O_NOCTTY)
         guard newMaster >= 0 else { throw Self.failure("Kein Pseudo-Terminal verfügbar") }
@@ -50,10 +54,33 @@ final class TerminalProcess {
         var size: winsize = Self.windowSize(columns: columns, rows: rows)
         _ = ioctl(newMaster, TIOCSWINSZ, &size)
 
+        var descriptors: [(source: Int32, target: Int32)] = [(slave, 0), (slave, 1), (slave, 2)]
+        var secretPipe: Int32 = -1
+        if let secret { secretPipe = try Self.pipe(holding: secret) }
+        defer { if secretPipe >= 0 { close(secretPipe) } }
+        if secretPipe >= 0 { descriptors.append((secretPipe, 3)) }
+
+        let child: pid_t = try Self.spawn(executable: executable, arguments: arguments, environment: environment,
+                                          descriptors: descriptors)
+        keepMaster = true
+        master = newMaster
+        pid = child
+        watch()
+    }
+
+    /// Obergrenze für ein Passwort bzw. eine Passphrase: passt sicher in den Puffer der Pipe (16 KiB).
+    nonisolated static let secretLimit: Int = 4_096
+    private nonisolated static let spawnLock: NSLock = NSLock()
+
+    /// Startet ein Programm ohne Shell (Argumentliste, S3) mit eigener Sitzung (kein Steuerterminal: plink und
+    /// puttygen können nicht am Terminal vorbei fragen). Das Kind erbt nur `descriptors` (`POSIX_SPAWN_CLOEXEC_DEFAULT`,
+    /// S8), seine neuen Dateien entstehen mit `0600` (umask 077).
+    nonisolated static func spawn(executable: String, arguments: [String], environment: [String],
+                      descriptors: [(source: Int32, target: Int32)]) throws(Failure) -> pid_t {
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
-        for target: Int32 in 0...2 { posix_spawn_file_actions_adddup2(&actions, slave, target) }
+        for (source, target) in descriptors { posix_spawn_file_actions_adddup2(&actions, source, target) }
 
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
@@ -74,16 +101,38 @@ final class TerminalProcess {
             envp.forEach { free($0) }
         }
         var child: pid_t = 0
-        // umask gilt prozessweit; der kurze Moment macht höchstens Dateien der App strenger
-        let previousMask: mode_t = umask(0o077)
-        let result: Int32 = posix_spawn(&child, executable, &actions, &attributes, argv, envp)
-        umask(previousMask)
+        // umask gilt prozessweit: die Sperre verhindert, dass zwei gleichzeitige Starts die alte Maske vertauschen;
+        // der kurze Moment macht höchstens Dateien der App strenger
+        let result: Int32 = spawnLock.withLock {
+            let previousMask: mode_t = umask(0o077)
+            defer { umask(previousMask) }
+            return posix_spawn(&child, executable, &actions, &attributes, argv, envp)
+        }
         guard result == 0 else { throw Failure(message: "Start fehlgeschlagen: \(String(cString: strerror(result)))") }
+        return child
+    }
 
-        keepMaster = true
-        master = newMaster
-        pid = child
-        watch()
+    /// Lese-Ende einer Pipe, in der schon `secret` und ein Zeilenende stehen (Schreib-Ende zu). Geschrieben wird mit
+    /// `writev` direkt aus dem Puffer, ohne eine zusammengesetzte Kopie des Geheimnisses (M0 Vorgabe für M3).
+    nonisolated static func pipe(holding secret: Data) throws(Failure) -> Int32 {
+        guard secret.count <= secretLimit else { throw Failure(message: "Das Passwort ist zu lang.") }
+        var ends: [Int32] = [-1, -1]
+        guard Darwin.pipe(&ends) == 0 else { throw failure("Keine Pipe verfügbar") }
+        for end in ends { _ = fcntl(end, F_SETFD, FD_CLOEXEC) }
+        var newline: UInt8 = 0x0A
+        let written: Int = secret.withUnsafeBytes { bytes in
+            withUnsafeMutablePointer(to: &newline) { newlinePointer in
+                var parts: [iovec] = [iovec(iov_base: UnsafeMutableRawPointer(mutating: bytes.baseAddress), iov_len: bytes.count),
+                                      iovec(iov_base: newlinePointer, iov_len: 1)]
+                return writev(ends[1], &parts, 2)
+            }
+        }
+        close(ends[1])
+        guard written == secret.count + 1 else {
+            close(ends[0])
+            throw Failure(message: "Das Passwort konnte nicht übergeben werden.")
+        }
+        return ends[0]
     }
 
     /// Tastatur und Einfügen an das Programm. Blockiert nie: was das Programm gerade nicht annimmt, wartet in
@@ -229,7 +278,7 @@ final class TerminalProcess {
         return winsize(ws_row: safeRows, ws_col: safeColumns, ws_xpixel: 0, ws_ypixel: 0)
     }
 
-    private static func failure(_ text: String) -> Failure {
+    nonisolated private static func failure(_ text: String) -> Failure {
         Failure(message: "\(text): \(String(cString: strerror(errno)))")
     }
 }

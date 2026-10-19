@@ -10,9 +10,11 @@ public struct PlinkCommand: Equatable, Sendable {
     /// Aus der Umgebung der App übernommen; alles andere setzt die App selbst.
     private static let passedThrough: [String] = ["HOME", "LANG", "LOGNAME", "SSH_AUTH_SOCK", "USER"]
 
-    public init(sessionName: String, puttyDirectory: String, parentEnvironment: [String: String]) throws(InputError) {
+    /// `passwordFromPipe`: Das Passwort aus dem Schlüsselbund liegt in einer Pipe auf fd 3 (M0 B5/B12, M3, S1).
+    public init(sessionName: String, puttyDirectory: String, parentEnvironment: [String: String],
+                passwordFromPipe: Bool = false) throws(InputError) {
         try InputRules.checkSessionName(sessionName)
-        arguments = ["-load", sessionName]
+        arguments = ["-load", sessionName] + (passwordFromPipe ? ["-pwfile", "/dev/fd/3"] : [])
 
         var values: [String: String] = [
             "COLORTERM": "truecolor",
