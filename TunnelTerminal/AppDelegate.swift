@@ -3,10 +3,21 @@ import TunnelTerminalCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controllers: [ConnectionWindowController] = []
+    /// Gespeicherte Sitzungen, gemeinsam für alle Fenster.
+    private var library: SessionLibrary?
+    private let connected: ConnectedSessions = ConnectedSessions()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
         removeQuickSessions()   // Reste nach einem Absturz
+        do {
+            library = SessionLibrary(directory: try AppIdentity.puttyDirectory())
+        } catch {
+            AppLog.app.error("PuTTY-Ordner nicht erreichbar: \(error.localizedDescription, privacy: .private(mask: .hash))")
+            NSAlert(error: error).runModal()   // ohne PuTTY-Ordner geht weder Sitzung noch Schnellverbindung
+            NSApp.terminate(nil)
+            return
+        }
         newWindow(nil)
     }
 
@@ -38,23 +49,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func newWindow(_ sender: Any?) {
-        makeController().showWindow(nil)
+        let controller: ConnectionWindowController? = makeController()
+        controller?.quick.requestFocus()
+        controller?.showWindow(nil)
     }
 
-    /// ⌘T und „+“ in der Tab-Leiste: neuer Tab mit der Schnellverbindung, vorbelegt mit der Adresse des aktiven Tabs.
+    // Ohne Fenster landen diese Befehle hier (kein Fenster-Controller in der Responder-Kette): Fenster öffnen und
+    // weiterreichen.
+    @objc func newSession(_ sender: Any?) { frontController()?.newSession(nil) }
+    @objc func importRegistry(_ sender: Any?) { frontController()?.importRegistry(nil) }
+    @objc func importFolder(_ sender: Any?) { frontController()?.importFolder(nil) }
+    @objc func focusQuickConnect(_ sender: Any?) { frontController()?.focusQuickConnect(nil) }
+
+    private func frontController() -> ConnectionWindowController? {
+        let controller: ConnectionWindowController? = makeController()
+        controller?.showWindow(nil)
+        return controller
+    }
+
+    /// ⌘T und „+“ in der Tab-Leiste: neuer Tab, Schnellverbindung vorbelegt mit der Adresse des aktiven Tabs.
     @objc func newWindowForTab(_ sender: Any?) {
-        let current: ConnectionWindowController? = controllers.first { $0.window === NSApp.keyWindow }
-        let controller: ConnectionWindowController = makeController(address: current?.address)
-        guard let tabWindow = controller.window else { return }
+        let current: ConnectionWindowController? = keyController
+        guard let controller = makeController(address: current?.address, like: current),
+              let tabWindow = controller.window else { return }
+        controller.quick.requestFocus()   // nur hier und bei neuen Fenstern: ein Tab mit Verbindung behält den Terminal-Fokus
         current?.window?.addTabbedWindow(tabWindow, ordered: .above)
         tabWindow.makeKeyAndOrderFront(nil)
     }
 
-    private func makeController(address: (text: String, connectionProtocol: ConnectionProtocol)? = nil)
-        -> ConnectionWindowController {
+    /// Verbindung aus der Seitenleiste eines schon verbundenen Tabs: neuer Tab daneben.
+    private func open(_ opening: ConnectionWindowController.Opening, nextTo current: ConnectionWindowController) {
+        guard let controller = makeController(like: current), let tabWindow = controller.window else { return }
+        current.window?.addTabbedWindow(tabWindow, ordered: .above)
+        tabWindow.makeKeyAndOrderFront(nil)
+        controller.open(opening)
+    }
+
+    private var keyController: ConnectionWindowController? {
+        controllers.first { $0.window === NSApp.keyWindow }
+    }
+
+    /// Neues Fenster bzw. neuer Tab; Seitenleiste und Inspektor wie im aktiven Fenster.
+    private func makeController(address: (text: String, connectionProtocol: ConnectionProtocol)? = nil,
+                                like model: ConnectionWindowController? = nil) -> ConnectionWindowController? {
+        guard let library else { return nil }
+        library.reload()   // Sitzungen, die eine andere PuTTY-Installation inzwischen angelegt hat
+        let template: ConnectionWindowController? = model ?? keyController
         let controller: ConnectionWindowController = ConnectionWindowController(
-            address: address?.text ?? "", connectionProtocol: address?.connectionProtocol ?? .ssh)
+            library: library, connected: connected, address: address?.text ?? "",
+            connectionProtocol: address?.connectionProtocol ?? .ssh,
+            showsSidebar: template?.showsSidebar ?? true, showsInspector: template?.showsInspector ?? true)
         controller.onClose = { [weak self] closed in self?.controllers.removeAll { $0 === closed } }
+        controller.onOpenInNewTab = { [weak self] opening, current in self?.open(opening, nextTo: current) }
         controllers.append(controller)
         return controller
     }

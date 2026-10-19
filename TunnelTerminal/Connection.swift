@@ -1,11 +1,15 @@
 import Foundation
 import TunnelTerminalCore
 
-/// Eine Verbindung eines Tabs: schreibt die vorübergehende Sitzung in den PuTTY-Ordner, startet plink mit
-/// `-load` (S3) und entfernt die Sitzung wieder, sobald plink beendet ist.
+/// Eine Verbindung eines Tabs. Schnellverbindung: schreibt eine vorübergehende Sitzung in den PuTTY-Ordner und
+/// entfernt sie wieder, sobald plink beendet ist. Gespeicherte Sitzung: plink lädt sie direkt. Immer `-load` (S3).
 final class Connection {
-    let endpoint: Endpoint
-    let connectionProtocol: ConnectionProtocol
+    enum Target: Equatable {
+        case quick(Endpoint, ConnectionProtocol)
+        case saved(String)
+    }
+
+    let target: Target
 
     var onOutput: ((ArraySlice<UInt8>) -> Void)? {
         get { process.onOutput }
@@ -16,8 +20,22 @@ final class Connection {
 
     var isRunning: Bool { process.isRunning }
 
-    private let session: SessionFile
-    private let sessionName: String = AppIdentity.quickSessionPrefix + UUID().uuidString
+    /// Fenstertitel: Adresse bzw. Name der gespeicherten Sitzung.
+    var displayName: String {
+        switch target {
+        case .quick(let endpoint, _): endpoint.displayName
+        case .saved(let name): name
+        }
+    }
+
+    /// Adresse und Protokoll einer Schnellverbindung (zum Vorbelegen eines neuen Tabs).
+    var quickAddress: (text: String, connectionProtocol: ConnectionProtocol)? {
+        if case .quick(let endpoint, let connectionProtocol) = target { (endpoint.displayName, connectionProtocol) } else { nil }
+    }
+
+    /// Nur bei Schnellverbindungen: die vorübergehende Sitzung.
+    private let quickSession: SessionFile?
+    private let sessionName: String
     private let process: TerminalProcess = TerminalProcess()
     private var hungUpByUser: Bool = false
     private let puttyDirectory: @MainActor () throws -> PuTTYDirectory
@@ -25,10 +43,45 @@ final class Connection {
     /// `puttyDirectory` nur für Tests ändern (eigener Ordner statt Application Support, RL 3.9).
     init(endpoint: Endpoint, connectionProtocol: ConnectionProtocol,
          puttyDirectory: @escaping @MainActor () throws -> PuTTYDirectory = AppIdentity.puttyDirectory) throws(InputError) {
-        self.endpoint = endpoint
-        self.connectionProtocol = connectionProtocol
+        target = .quick(endpoint, connectionProtocol)
         self.puttyDirectory = puttyDirectory
-        session = try SessionFile.quickConnect(to: endpoint, using: connectionProtocol)
+        quickSession = try SessionFile.quickConnect(to: endpoint, using: connectionProtocol)
+        sessionName = AppIdentity.quickSessionPrefix + UUID().uuidString
+    }
+
+    init(savedSession name: String,
+         puttyDirectory: @escaping @MainActor () throws -> PuTTYDirectory = AppIdentity.puttyDirectory) throws(InputError) {
+        try SessionName.check(name, reservedPrefix: AppIdentity.quickSessionPrefix)
+        target = .saved(name)
+        self.puttyDirectory = puttyDirectory
+        quickSession = nil
+        sessionName = name
+    }
+
+    /// Dieselbe Verbindung noch einmal (neue Schnellsitzung bzw. dieselbe gespeicherte Sitzung).
+    func again() throws(InputError) -> Connection {
+        switch target {
+        case .quick(let endpoint, let connectionProtocol):
+            try Connection(endpoint: endpoint, connectionProtocol: connectionProtocol, puttyDirectory: puttyDirectory)
+        case .saved(let name):
+            try Connection(savedSession: name, puttyDirectory: puttyDirectory)
+        }
+    }
+
+    /// Gefahren, die vor jedem Verbinden bestätigt werden müssen (S4), auch aus Sitzungen, die als SSH-Proxy geladen
+    /// werden. Wirft, wenn eine beteiligte Sitzung nicht lesbar ist: dann nicht verbinden (plink läse sie trotzdem).
+    func warningsRequiringConfirmation() throws -> [SessionWarning] {
+        guard quickSession == nil else { return [] }
+        let directory: PuTTYDirectory = try puttyDirectory()
+        return try SessionWarning.requiringConfirmation(for: try directory.read(sessionNamed: sessionName)) { name in
+            directory.exists(sessionNamed: name) ? try directory.read(sessionNamed: name) : nil
+        }
+    }
+
+    /// Einstellungen für den Inspektor: die Schnellsitzung bzw. die gespeicherte Sitzung (`nil`, wenn nicht lesbar).
+    func settings() -> SessionFile? {
+        if let quickSession { return quickSession }
+        return try? puttyDirectory().read(sessionNamed: sessionName)
     }
 
     /// Startet plink. Fehler kommen als lesbarer Text zurück.
@@ -37,15 +90,15 @@ final class Connection {
         let command: PlinkCommand
         do {
             directory = try puttyDirectory()
-            try directory.write(session, sessionName: sessionName)
+            if let quickSession { try directory.write(quickSession, sessionName: sessionName) }
             command = try PlinkCommand(sessionName: sessionName, puttyDirectory: directory.url.path,
                                        parentEnvironment: ProcessInfo.processInfo.environment)
         } catch {
             throw TerminalProcess.Failure(message: "Sitzung konnte nicht vorbereitet werden: \(error.localizedDescription)")
         }
-        let name: String = sessionName
+        let temporary: String? = quickSession == nil ? nil : sessionName
         process.onExit = { [weak self] status in
-            directory.removeSession(named: name)
+            if let temporary { directory.removeSession(named: temporary) }
             AppLog.connection.info("Verbindung beendet, Status \(status, privacy: .public)")
             guard let self else { return }
             // Selbst getrennt: kein „Signal 1“ anzeigen
@@ -55,11 +108,11 @@ final class Connection {
             try process.start(executable: AppIdentity.plinkPath, arguments: command.arguments,
                               environment: command.environment, columns: columns, rows: rows)
         } catch {
-            directory.removeSession(named: name)
+            if let temporary { directory.removeSession(named: temporary) }
             process.onExit = nil
             throw error
         }
-        AppLog.connection.info("Verbindung gestartet zu \(self.endpoint.host, privacy: .private(mask: .hash)), Protokoll \(self.connectionProtocol.rawValue, privacy: .public)")
+        AppLog.connection.info("Verbindung gestartet zu \(self.displayName, privacy: .private(mask: .hash))")
     }
 
     func send(_ data: ArraySlice<UInt8>) { process.send(data) }

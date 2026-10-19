@@ -21,6 +21,11 @@ build/m1/*
 !build/u1/
 build/u1/*
 !build/u1/pruef.sh
+# M2: Generator der Zahlen-Schlüssel und Skripte (die Testquellen erzeugt build/m2/testquellen.sh, nur Platzhalter, S14)
+!build/m2/
+build/m2/*
+!build/m2/putty-zahlen-schluessel.py
+!build/m2/*.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

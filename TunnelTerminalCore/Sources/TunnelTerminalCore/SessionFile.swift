@@ -42,6 +42,21 @@ public struct SessionFile: Equatable, Sendable {
         return String(decoding: line[start..<end], as: UTF8.self)
     }
 
+    /// Alle Einträge in Dateireihenfolge, je Schlüssel nur der erste (wie PuTTY liest). Zeilen ohne „=“ fehlen.
+    public var entries: [(key: String, value: String)] {
+        var seen: Set<String> = []
+        var result: [(key: String, value: String)] = []
+        for line in lines {
+            guard let equals = line.firstIndex(of: UInt8(ascii: "=")) else { continue }
+            let key: String = String(decoding: line[..<equals], as: UTF8.self)
+            guard seen.insert(key).inserted else { continue }
+            let rest: ArraySlice<UInt8> = line[(equals + 1)...]
+            let end: Int = rest.firstIndex(of: 0x0D) ?? rest.endIndex
+            result.append((key, String(decoding: rest[..<end], as: UTF8.self)))
+        }
+        return result
+    }
+
     /// Setzt einen Wert (ersetzt den ersten Treffer, sonst angehängt). Lehnt CR, LF und NUL ab (S4).
     public mutating func setValue(_ value: String, forKey key: String) throws(InputError) {
         guard !key.isEmpty else { throw .empty(.key) }
@@ -55,6 +70,12 @@ public struct SessionFile: Equatable, Sendable {
             lines.append(line)
             endsWithNewline = true
         }
+    }
+
+    /// Entfernt alle Zeilen mit diesem Schlüssel (z. B. ein Klartext-Passwort beim Import, S1).
+    public mutating func removeValue(forKey key: String) {
+        let prefix: [UInt8] = Array(key.utf8) + [UInt8(ascii: "=")]
+        lines.removeAll { $0.starts(with: prefix) }
     }
 
     /// Dateiname unter `sessions/` wie PuTTYs `make_session_filename`: nur `+ - . @ _` und ASCII-Buchstaben

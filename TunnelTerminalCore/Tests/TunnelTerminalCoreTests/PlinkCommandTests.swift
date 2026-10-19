@@ -33,7 +33,13 @@ struct PlinkCommandTests {
         #expect(command.environment == ["COLORTERM=truecolor", "LANG=en_US.UTF-8", "PUTTYDIR=/p", "TERM=xterm-256color"])
     }
 
-    @Test("Ungültige Sitzungsnamen werden abgelehnt", arguments: ["", "-proxycmd", "a b", "a\nb", "a\u{0}"])
+    @Test("Gespeicherte Sitzungen dürfen Leerzeichen und Gruppen im Namen haben (Argumentliste, keine Shell)")
+    func acceptsSpacesInSessionNames() throws {
+        let command: PlinkCommand = try PlinkCommand(sessionName: "Heim/Mein Server", puttyDirectory: "/p", parentEnvironment: [:])
+        #expect(command.arguments == ["-load", "Heim/Mein Server"])
+    }
+
+    @Test("Ungültige Sitzungsnamen werden abgelehnt", arguments: ["", "-proxycmd", " a", "a ", "a\nb", "a\u{0}"])
     func rejectsSessionNames(_ name: String) {
         #expect(throws: InputError.self) {
             try PlinkCommand(sessionName: name, puttyDirectory: "/p", parentEnvironment: [:])

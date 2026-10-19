@@ -2,82 +2,215 @@ import AppKit
 import TunnelTerminalCore
 import SwiftTerm
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// Ein Fenster bzw. Tab: zuerst die Schnellverbindung, danach das Terminal der Verbindung.
-final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation, TerminalViewDelegate {
+/// Hauptfenster bzw. ein Tab, Gerüst B „Werkbank“ (Plan 3.1): links die Seitenleiste mit Schnellverbindung und
+/// Sitzungen, in der Mitte Startansicht bzw. Terminal, rechts der Inspektor. Menübefehle zu Sitzungen und zur
+/// Verbindung landen hier über die Responder-Kette.
+final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
+    NSToolbarItemValidation, NSToolbarDelegate, TerminalViewDelegate {
     /// Gemeinsame Kennung, damit macOS die Fenster zu Tabs zusammenfasst.
     static let tabbingIdentifier: String = "Verbindung"
 
+    /// Was ein Tab öffnen soll: eine geprüfte Schnellverbindung oder eine gespeicherte Sitzung.
+    enum Opening {
+        case connection(Connection)
+        case savedSession(String)
+    }
+
     var onClose: ((ConnectionWindowController) -> Void)?
+    /// Dieser Tab ist schon verbunden: die Verbindung in einem neuen Tab daneben öffnen (App-Delegate).
+    var onOpenInNewTab: ((Opening, ConnectionWindowController) -> Void)?
+
+    let sessions: SessionsModel
+    let quick: QuickConnect
+    private let connected: ConnectedSessions
+    private let info: ConnectionInfo = ConnectionInfo()
+    private let split: NSSplitViewController = NSSplitViewController()
+    private let sidebarItem: NSSplitViewItem
+    private let inspectorItem: NSSplitViewItem
+    private let area: TerminalArea = TerminalArea()
 
     private var connection: Connection?
     private var terminal: TerminalView?
-    private var banner: NSTitlebarAccessoryViewController?
+    /// Gespeicherte Sitzung, die für den Status in der Seitenleiste als verbunden zählt.
+    private var countedSession: String?
     private var closingConfirmed: Bool = false
 
+    private static let registryType: UTType = UTType(filenameExtension: "reg") ?? .data
+    private static let disconnectItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("trennen")
+
     var isConnected: Bool { connection?.isRunning ?? false }
+    var showsSidebar: Bool { !sidebarItem.isCollapsed }
+    var showsInspector: Bool { !inspectorItem.isCollapsed }
 
     /// Adresse und Protokoll der Verbindung dieses Tabs (zum Vorbelegen eines neuen Tabs).
     var address: (text: String, connectionProtocol: ConnectionProtocol)? {
-        connection.map { ($0.endpoint.displayName, $0.connectionProtocol) }
+        connection?.quickAddress
     }
 
-    init(address: String = "", connectionProtocol: ConnectionProtocol = .ssh) {
-        let window: NSWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 540),
-                                        styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                                        backing: .buffered, defer: false)
+    init(library: SessionLibrary, connected: ConnectedSessions, address: String = "",
+         connectionProtocol: ConnectionProtocol = .ssh, showsSidebar: Bool = true, showsInspector: Bool = true) {
+        sessions = SessionsModel(library: library)
+        quick = QuickConnect(address: address, connectionProtocol: connectionProtocol)
+        self.connected = connected
+
+        let sidebar: NSHostingController<SessionSidebar> = NSHostingController(
+            rootView: SessionSidebar(model: sessions, quick: quick, connected: connected))
+        sidebar.sizingOptions = []   // keine Größenbindung an den SwiftUI-Inhalt (Richtlinien 3.4 Regel 19)
+        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.minimumThickness = 210
+        sidebarItem.maximumThickness = 360
+        sidebarItem.isCollapsed = !showsSidebar
+
+        let content: NSSplitViewItem = NSSplitViewItem(viewController: area)
+        content.minimumThickness = 360
+
+        let inspector: NSHostingController<ConnectionInspector> = NSHostingController(rootView: ConnectionInspector(info: info))
+        inspector.sizingOptions = []
+        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        inspectorItem.minimumThickness = 220
+        inspectorItem.maximumThickness = 340
+        inspectorItem.isCollapsed = !showsInspector
+
+        split.addSplitViewItem(sidebarItem)
+        split.addSplitViewItem(content)
+        split.addSplitViewItem(inspectorItem)
+
+        let window: NSWindow = NSWindow(contentViewController: split)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.title = "Neue Verbindung"
         window.tabbingIdentifier = Self.tabbingIdentifier
         window.isRestorable = false
-        window.minSize = NSSize(width: 420, height: 240)
+        window.setContentSize(NSSize(width: 1180, height: 680))
+        window.minSize = NSSize(width: 820, height: 360)
         super.init(window: window)
+
+        let toolbar: NSToolbar = NSToolbar(identifier: "Hauptfenster")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
         window.delegate = self
-        showForm(address: address, connectionProtocol: connectionProtocol)
+
+        sessions.undoManager = { [weak window] in window?.undoManager }
+        sessions.onConnect = { [weak self] name in self?.request(.savedSession(name)) }
+        sessions.onImport = { [weak self] source in
+            switch source {
+            case .registry: self?.importRegistry(nil)
+            case .folder: self?.importFolder(nil)
+            }
+        }
+        sessions.revealSidebar = { [weak self] in self?.sidebarItem.isCollapsed = false }
+        quick.connect = { [weak self] text, choice in self?.connectQuick(text, using: choice) }
+
+        let start: NSHostingView<StartView> = NSHostingView(rootView: StartView(model: sessions))
+        start.sizingOptions = []
+        area.show(start)
         window.center()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) wird nicht benutzt") }
 
-    // MARK: - Ablauf
+    // MARK: - Verbinden
 
-    private func showForm(address: String, connectionProtocol: ConnectionProtocol) {
-        let rootView: ConnectForm = ConnectForm(address: address, connectionProtocol: connectionProtocol) { [weak self] text, choice in
-            self?.connect(address: text, using: choice)
-        }
-        let form: NSHostingView<ConnectForm> = NSHostingView(rootView: rootView)
-        form.sizingOptions = []   // keine Größenbindung des Fensters an das Formular (Richtlinien 3.4 Regel 19)
-        window?.contentView = form
+    /// Noch nichts verbunden: Eine Verbindung aus der Seitenleiste kommt in diesen Tab, sonst in einen neuen.
+    private var isFree: Bool { terminal == nil }
+
+    /// Derselbe PuTTY-Ordner wie die Seitenleiste: Rückfrage (S4), Inspektor und plink lesen, was die Liste zeigt.
+    private var puttyDirectory: @MainActor () throws -> PuTTYDirectory {
+        let directory: PuTTYDirectory = sessions.library.directory
+        return { directory }
     }
 
-    /// Prüft die Adresse und startet die Verbindung. Gibt eine Fehlermeldung für das Formular zurück.
-    private func connect(address: String, using choice: ConnectionProtocol) -> String? {
-        let newConnection: Connection
+    private func request(_ opening: Opening) {
+        if isFree { open(opening) } else { onOpenInNewTab?(opening, self) }
+    }
+
+    /// Prüft die Adresse der Schnellverbindung. Gibt eine Fehlermeldung für das Feld zurück.
+    private func connectQuick(_ text: String, using choice: ConnectionProtocol) -> String? {
         do {
-            newConnection = try Connection(endpoint: try Endpoint(parsing: address), connectionProtocol: choice)
+            request(.connection(try Connection(endpoint: try Endpoint(parsing: text), connectionProtocol: choice,
+                                               puttyDirectory: puttyDirectory)))
+            return nil
         } catch {
             return error.message
         }
+    }
+
+    /// Öffnet eine Verbindung in diesem Tab. Erst aufrufen, wenn das Fenster sichtbar ist (Rückfrage als Sheet).
+    func open(_ opening: Opening) {
         showTerminal()
-        start(newConnection)
-        return nil
+        switch opening {
+        case .connection(let newConnection):
+            confirmAndStart(newConnection)
+        case .savedSession(let name):
+            do {
+                confirmAndStart(try Connection(savedSession: name, puttyDirectory: puttyDirectory))
+            } catch {
+                window?.title = SessionWarning.visible(name)
+                connectionEnded(error.message)
+            }
+        }
+    }
+
+    /// Ein lokaler Proxy-Befehl oder eine eigene GSSAPI-Bibliothek (auch in einer Proxy-Sitzung) führt etwas auf diesem
+    /// Mac aus: vor jedem Verbinden fragen (S4), alle Gefahren zeigen. Ist eine Sitzung nicht lesbar, nicht verbinden.
+    private func confirmAndStart(_ newConnection: Connection) {
+        let warnings: [SessionWarning]
+        do {
+            warnings = try newConnection.warningsRequiringConfirmation()
+        } catch {
+            prepare(newConnection)
+            connectionEnded("Nicht verbunden: Die Sitzung ist nicht lesbar (\(error.message))")
+            return
+        }
+        guard !warnings.isEmpty else {
+            start(newConnection)
+            return
+        }
+        guard let window else { return }   // ohne Fenster keine Rückfrage, also auch kein Verbinden
+        prepare(newConnection)
+        let alert: NSAlert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "„\(SessionWarning.visible(newConnection.displayName))“ führt beim Verbinden etwas auf diesem Mac aus."
+        alert.informativeText = warnings.map(\.message).joined(separator: "\n\n")
+            + "\n\nNur verbinden, wenn du das kennst und ihm vertraust."
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Verbinden")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            if response == .alertSecondButtonReturn {
+                self.start(newConnection)
+            } else {
+                self.connectionEnded("Nicht verbunden.")
+            }
+        }
+    }
+
+    /// Titel und Inspektor zeigen die Verbindung, auch bevor sie läuft.
+    private func prepare(_ newConnection: Connection) {
+        connection = newConnection
+        window?.title = SessionWarning.visible(newConnection.displayName)
+        info.summary = newConnection.settings().map(ConnectionSummary.init(file:))
     }
 
     private func showTerminal() {
-        guard terminal == nil, let window else { return }
-        let view: TerminalView = TerminalView(frame: window.contentLayoutRect)
+        guard terminal == nil else { return }
+        let view: TerminalView = TerminalView(frame: area.view.bounds)
         view.terminalDelegate = self
         view.setAccessibilityLabel("Terminal")
-        window.contentView = view
-        window.makeFirstResponder(view)
-        window.layoutIfNeeded()
+        area.show(view)
+        window?.makeFirstResponder(view)
+        window?.layoutIfNeeded()
         terminal = view
     }
 
     private func start(_ newConnection: Connection) {
-        guard let terminal else { return }
-        connection = newConnection
-        window?.title = newConnection.endpoint.displayName
+        // nie zwei plink in einem Tab: das erste ließe sich sonst nicht mehr trennen
+        guard let terminal, connection?.isRunning != true else { return }
+        prepare(newConnection)
         newConnection.onOutput = { [weak terminal] bytes in terminal?.feed(byteArray: bytes) }
         newConnection.onEnd = { [weak self] message in self?.connectionEnded(message) }
         let size: TerminalDimensions = terminal.terminalDimensions
@@ -86,41 +219,47 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         } catch {
             AppLog.connection.error("Start fehlgeschlagen")
             connectionEnded(error.message)
+            return
+        }
+        info.isRunning = true
+        info.endMessage = nil
+        if case .saved(let name) = newConnection.target {
+            connected.started(name)
+            countedSession = name
         }
     }
 
     private func connectionEnded(_ message: String) {
+        releaseCountedSession()
+        info.isRunning = false
+        info.endMessage = message
         showBanner(message)
         NSAccessibility.post(element: window as Any, notification: .announcementRequested,
                              userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
 
+    private func releaseCountedSession() {
+        if let countedSession { connected.ended(countedSession) }
+        countedSession = nil
+    }
+
     private func showBanner(_ message: String) {
-        removeBanner()
-        let accessory: NSTitlebarAccessoryViewController = NSTitlebarAccessoryViewController()
         let content: NSHostingView<EndedBanner> = NSHostingView(rootView: EndedBanner(message: message) { [weak self] in
             self?.reconnect(nil)
         })
         content.sizingOptions = [.intrinsicContentSize]
-        accessory.view = content
-        accessory.layoutAttribute = .bottom
-        window?.addTitlebarAccessoryViewController(accessory)
-        banner = accessory
+        area.showBanner(content)
     }
 
-    private func removeBanner() {
-        banner?.removeFromParent()
-        banner = nil
-    }
-
-    // MARK: - Menübefehle
+    // MARK: - Menübefehle: Verbindung
 
     @objc func reconnect(_ sender: Any?) {
-        guard let previous = connection, !previous.isRunning else { return }
-        removeBanner()
+        // Während einer Rückfrage (Sheet) nicht noch eine stellen
+        guard window?.attachedSheet == nil, let previous = connection, !previous.isRunning else { return }
+        area.showBanner(nil)
         terminal?.feed(text: "\r\n")
         do {
-            start(try Connection(endpoint: previous.endpoint, connectionProtocol: previous.connectionProtocol))
+            confirmAndStart(try previous.again())
         } catch {
             connectionEnded(error.message)
         }
@@ -130,12 +269,148 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         connection?.hangUp()
     }
 
+    /// ⇧⌘K: Fokus in die Schnellverbindung (blendet die Seitenleiste ein).
+    @objc func focusQuickConnect(_ sender: Any?) {
+        sidebarItem.isCollapsed = false
+        quick.requestFocus()
+    }
+
+    // MARK: - Menübefehle: Sitzungen
+
+    @objc func newSession(_ sender: Any?) { sessions.newSession() }
+
+    @objc func editSession(_ sender: Any?) { sessions.editSelection() }
+
+    @objc func duplicateSessions(_ sender: Any?) { sessions.duplicateSelection() }
+
+    @objc func deleteSessions(_ sender: Any?) { sessions.deleteSelection() }
+
+    @objc func connectSessions(_ sender: Any?) { sessions.connect(sessions.selection) }
+
+    /// Registrierungsdatei (`.reg`) aus Windows-PuTTY.
+    @objc func importRegistry(_ sender: Any?) {
+        let panel: NSOpenPanel = NSOpenPanel()
+        panel.message = "Registrierungsdatei (.reg) aus Windows-PuTTY wählen (regedit: Export von HKEY_CURRENT_USER\\Software\\SimonTatham)"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [Self.registryType]
+        runImportPanel(panel, startingIn: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
+    /// PuTTY-Ordner von PuTTY für macOS/Linux (`~/.config/putty`, `~/.putty`). Eine Auswahl „Datei oder Ordner“ in einem
+    /// Dialog geht nicht: NSOpenPanel öffnet einen markierten Ordner dann, statt ihn zu wählen.
+    @objc func importFolder(_ sender: Any?) {
+        let panel: NSOpenPanel = NSOpenPanel()
+        panel.message = "PuTTY-Ordner wählen (enthält den Unterordner „sessions“, z. B. ~/.config/putty)"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        let home: URL = FileManager.default.homeDirectoryForCurrentUser
+        let known: URL? = [".config/putty", ".putty"].map { home.appendingPathComponent($0, isDirectory: true) }
+            .first { FileManager.default.fileExists(atPath: $0.appendingPathComponent("sessions").path) }
+        runImportPanel(panel, startingIn: known ?? home)
+    }
+
+    private func runImportPanel(_ panel: NSOpenPanel, startingIn directory: URL) {
+        guard let window else { return }
+        panel.prompt = "Importieren"
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true   // ~/.config und ~/.putty sind versteckt
+        panel.directoryURL = directory
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.sessions.prepareImport(from: url)
+        }
+    }
+
+    @objc func exportRegistry(_ sender: Any?) {
+        guard let window else { return }
+        let names: [String] = exportNames
+        let panel: NSSavePanel = NSSavePanel()
+        panel.message = "Für Windows-PuTTY: Datei doppelklicken oder mit regedit importieren"
+        panel.nameFieldStringValue = "PuTTY-Sitzungen.reg"
+        panel.allowedContentTypes = [Self.registryType]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                try self.sessions.library.writeRegistryExport(of: names, to: url)
+            } catch {
+                self.sessions.report(error)
+            }
+        }
+    }
+
+    @objc func exportFolder(_ sender: Any?) {
+        guard let window else { return }
+        let names: [String] = exportNames
+        let panel: NSSavePanel = NSSavePanel()
+        panel.message = "Für PuTTY unter macOS oder Linux: Ordner als ~/.config/putty verwenden oder dorthin kopieren"
+        panel.nameFieldStringValue = "putty"
+        panel.canCreateDirectories = true
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                try self.sessions.library.exportFolder(of: names, to: url)
+            } catch {
+                self.sessions.report(error)
+            }
+        }
+    }
+
+    /// Ausgewählte Sitzungen, ohne Auswahl alle.
+    private var exportNames: [String] {
+        sessions.savedSelection.isEmpty ? sessions.library.names : sessions.savedSelection
+    }
+
+    /// ⌘⌫ löscht Sitzungen nur, wenn die Sitzungsliste selbst den Fokus hat – im Terminal, in Textfeldern und auf
+    /// anderen Bedienelementen gehört die Taste dorthin. Bei offenem Sheet (Editor) zeigt `firstResponder` noch die
+    /// Liste, obwohl im Sheet getippt wird.
+    private var sessionListHasFocus: Bool {
+        guard let window, window.attachedSheet == nil,
+              let list = window.firstResponder as? NSTableView else { return false }   // SwiftUI-List ist eine Tabelle
+        return list.isDescendant(of: sidebarItem.viewController.view)
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        switch menuItem.action {
+        // Bei offenem Sheet (Editor, Rückfrage, Dialog) erreichen Menübefehle dieses Fenster weiter über das Hauptfenster:
+        // nur Trennen bleibt
+        if window?.attachedSheet != nil { return menuItem.action == #selector(disconnect(_:)) && isConnected }
+        return switch menuItem.action {
         case #selector(reconnect(_:)): connection.map { !$0.isRunning } ?? false
         case #selector(disconnect(_:)): isConnected
+        case #selector(deleteSessions(_:)): sessionListHasFocus && !sessions.savedSelection.isEmpty
+        case #selector(duplicateSessions(_:)):
+            !sessions.savedSelection.contains(SessionName.defaultSettings) && !sessions.savedSelection.isEmpty
+        case #selector(editSession(_:)): sessions.selection.count == 1
+        case #selector(connectSessions(_:)): !sessions.connectableSelection.isEmpty
+        case #selector(exportRegistry(_:)), #selector(exportFolder(_:)): !sessions.library.names.isEmpty
         default: true
         }
+    }
+
+    // MARK: - Symbolleiste
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.disconnectItem,
+         .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard itemIdentifier == Self.disconnectItem else { return nil }
+        let item: NSToolbarItem = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = "Trennen"
+        item.toolTip = "Verbindung trennen (⌘.)"
+        item.image = NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: "Trennen")
+        item.action = #selector(disconnect(_:))
+        return item
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        item.itemIdentifier == Self.disconnectItem ? isConnected : true
     }
 
     // MARK: - Fenster
@@ -143,7 +418,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard isConnected, !closingConfirmed, let connection else { return true }
         let alert: NSAlert = NSAlert()
-        alert.messageText = "Verbindung zu „\(connection.endpoint.displayName)“ trennen?"
+        alert.messageText = "Verbindung zu „\(SessionWarning.visible(connection.displayName))“ trennen?"
         alert.informativeText = "Die laufende Sitzung wird beendet."
         alert.addButton(withTitle: "Trennen").hasDestructiveAction = true
         alert.addButton(withTitle: "Abbrechen")
@@ -157,6 +432,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     func windowWillClose(_ notification: Notification) {
         connection?.hangUp()
+        releaseCountedSession()
         onClose?(self)
     }
 
@@ -170,7 +446,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         connection?.resize(columns: newCols, rows: newRows)
     }
 
-    /// Titel vom Server werden nicht übernommen: Der Fenstertitel ist die Adresse (Plan M1).
+    /// Titel vom Server werden nicht übernommen: Der Fenstertitel ist die Adresse bzw. der Sitzungsname (Plan M1/M2).
     func setTerminalTitle(source: TerminalView, title: String) {}
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
     func scrolled(source: TerminalView, position: Double) {}
@@ -183,7 +459,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 }
 
 private extension Error {
-    /// Text für Formular und Hinweis.
+    /// Text für Feld und Hinweis.
     var message: String {
         switch self {
         case let error as InputError: error.message

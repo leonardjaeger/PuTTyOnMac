@@ -5,12 +5,15 @@ public enum InputField: String, Sendable {
     case sessionName = "Sitzungsname"
     case key = "Schlüssel"
     case value = "Wert"
+    case terminalType = "Terminaltyp"
+    case keepalive = "Keepalive-Intervall"
 }
 
 /// Abgelehnte Eingabe. Die Regeln stehen in Plan Abschnitt 6 (S3: keine Optionen einschleusen, S4: Sitzungsdateien).
 public enum InputError: Error, Equatable, Sendable {
     case empty(InputField)
     case leadingDash(InputField)
+    case leadingDot(InputField)
     case controlCharacter(InputField)
     case whitespace(InputField)
     case invalidCharacter(InputField)
@@ -18,12 +21,18 @@ public enum InputError: Error, Equatable, Sendable {
     case invalidPort
     case portRequired
     case invalidFile
+    case reservedName
+    case notAnExport
+    case notAPuTTYFolder
+    case outOfRange(InputField)
+    case nameTaken
 
     /// Meldung für die Oberfläche.
     public var message: String {
         switch self {
         case .empty(let field): "\(field.rawValue) fehlt."
         case .leadingDash(let field): "\(field.rawValue) darf nicht mit „-“ beginnen."
+        case .leadingDot(let field): "\(field.rawValue) darf nicht mit „.“ beginnen."
         case .controlCharacter(let field): "\(field.rawValue) enthält Steuerzeichen."
         case .whitespace(let field): "\(field.rawValue) darf keine Leerzeichen enthalten."
         case .invalidCharacter(let field): "\(field.rawValue) enthält unzulässige Zeichen."
@@ -31,6 +40,11 @@ public enum InputError: Error, Equatable, Sendable {
         case .invalidPort: "Der Port muss eine Zahl von 1 bis 65535 sein."
         case .portRequired: "Für dieses Protokoll ist ein Port nötig (z. B. server.example:7)."
         case .invalidFile: "Die Sitzungsdatei ist beschädigt."
+        case .reservedName: "Dieser Name ist reserviert (Standardeinstellungen bzw. Schnellverbindungen)."
+        case .notAnExport: "Die Datei ist kein Registrierungs-Export oder zu groß."
+        case .notAPuTTYFolder: "Der Ordner enthält keine PuTTY-Sitzungen (Unterordner „sessions“ fehlt)."
+        case .nameTaken: "Eine Sitzung mit diesem Namen gibt es schon."
+        case .outOfRange(let field): "\(field.rawValue) liegt außerhalb des erlaubten Bereichs."
         }
     }
 }
@@ -47,6 +61,25 @@ enum InputRules {
             if scalar.properties.isWhitespace { throw .whitespace(field) }
         }
         guard text.utf8.count <= maxLength else { throw .tooLong(field) }
+    }
+
+    /// Sitzungsname für `plink -load` (S3): wie `checkName`, aber Leerzeichen im Inneren erlaubt (die App startet plink
+    /// mit einer Argumentliste, nie über eine Shell). Jedes „/“-Segment (Gruppe, docs/adr/0001) ist nicht leer und
+    /// beginnt und endet nicht mit Leerraum.
+    static func checkSessionName(_ name: String) throws(InputError) {
+        guard !name.isEmpty else { throw .empty(.sessionName) }
+        guard !name.hasPrefix("-") else { throw .leadingDash(.sessionName) }
+        for scalar in name.unicodeScalars where isControl(scalar) { throw .controlCharacter(.sessionName) }
+        for segment in name.split(separator: "/", omittingEmptySubsequences: false) {
+            guard let first = segment.unicodeScalars.first, let last = segment.unicodeScalars.last else {
+                throw .invalidCharacter(.sessionName)
+            }
+            if first.properties.isWhitespace || last.properties.isWhitespace { throw .whitespace(.sessionName) }
+            // „.“, „..“ und versteckte Dateien (auch die Zwischendateien „.schreiben-…“) sind keine Sitzungen
+            if first == "." { throw .leadingDot(.sessionName) }
+        }
+        guard name.utf8.count <= 200,
+              SessionFile.fileName(forSessionNamed: name).utf8.count <= 255 else { throw .tooLong(.sessionName) }
     }
 
     /// Server: Name aus ASCII-Buchstaben, Ziffern, „.“, „-“, „_“ oder eine IPv6-Adresse (ab zwei „:“).
@@ -76,7 +109,7 @@ enum InputRules {
     }
 
     /// Cc (C0, DEL, C1), Cf (u. a. Richtungsumkehr U+202E) sowie Zeilen- und Absatztrenner.
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
+    static func isControl(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.properties.generalCategory {
         case .control, .format, .lineSeparator, .paragraphSeparator: true
         default: false

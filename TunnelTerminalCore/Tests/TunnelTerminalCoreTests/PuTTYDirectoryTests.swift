@@ -80,4 +80,76 @@ struct PuTTYDirectoryTests {
         try directory.write(SessionFile(), sessionName: "../../x")
         #expect(FileManager.default.fileExists(atPath: directory.url.appendingPathComponent("sessions/..%2F..%2Fx").path))
     }
+
+    @Test("Gespeicherte Sitzungen auflisten: zurückübersetzte Namen, ohne Zwischendateien und Unlesbares")
+    func listsSessionNames() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        for name in ["Heim/Server", "Mein Server", SessionName.defaultSettings] {
+            try directory.write(SessionFile(), sessionName: name)
+        }
+        let sessions: URL = directory.url.appendingPathComponent("sessions")
+        #expect(FileManager.default.createFile(atPath: sessions.appendingPathComponent(".schreiben-x").path, contents: Data()))
+        #expect(FileManager.default.createFile(atPath: sessions.appendingPathComponent("kaputt%FF").path, contents: Data()))
+        #expect(directory.sessionNames() == ["Default Settings", "Heim/Server", "Mein Server"])
+    }
+
+    @Test("Lesen liefert die Datei byte-gleich; fehlende und zu große Dateien werfen")
+    func readsSessions() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        let original: SessionFile = try SessionFile(contents: Data("HostName=server.example\r\nUnbekannt=x\n".utf8))
+        try directory.write(original, sessionName: "Heim/Server")
+        #expect(try directory.read(sessionNamed: "Heim/Server") == original)
+        #expect(throws: (any Error).self) { try directory.read(sessionNamed: "Fehlt") }
+        let big: URL = directory.url.appendingPathComponent("sessions/Gross")
+        #expect(FileManager.default.createFile(atPath: big.path, contents: Data(count: PuTTYDirectory.maximumSessionSize + 1)))
+        #expect(throws: InputError.invalidFile) { try directory.read(sessionNamed: "Gross") }
+    }
+
+    @Test("Umbenennen verschiebt die Datei samt Rechten; ein vorhandenes Ziel wird nie überschrieben")
+    func renamesSessions() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        var file: SessionFile = SessionFile()
+        try file.setValue("server.example", forKey: "HostName")
+        try directory.write(file, sessionName: "Alt")
+        try directory.write(SessionFile(), sessionName: "Belegt")
+        try directory.renameSession(from: "Alt", to: "Heim/Neu")
+        #expect(directory.sessionNames() == ["Belegt", "Heim/Neu"])
+        #expect(try directory.read(sessionNamed: "Heim/Neu") == file)
+        #expect(try mode(directory.url.appendingPathComponent("sessions/Heim%2FNeu")) == 0o600)
+        #expect(directory.exists(sessionNamed: "Belegt"))
+        #expect(throws: (any Error).self) { try directory.renameSession(from: "Heim/Neu", to: "Belegt") }
+        #expect(try directory.read(sessionNamed: "Belegt") == SessionFile())
+        #expect(try directory.read(sessionNamed: "Heim/Neu") == file)
+    }
+
+    @Test("Umbenennen nur in Groß/klein klappt auch auf Dateisystemen ohne Unterscheidung")
+    func renamesCaseOnly() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        var file: SessionFile = SessionFile()
+        try file.setValue("server.example", forKey: "HostName")
+        try directory.write(file, sessionName: "server")
+        try directory.renameSession(from: "server", to: "Server")
+        #expect(directory.sessionNames() == ["Server"])
+        #expect(try directory.read(sessionNamed: "Server") == file)
+    }
+
+    @Test("Nur Dateinamen, die die App selbst so schreiben würde (sonst zwei Einträge für dieselbe Sitzung)")
+    func listsOnlyCanonicalFileNames() throws {
+        let base: URL = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: base.appendingPathComponent("putty"))
+        let sessions: URL = directory.url.appendingPathComponent("sessions")
+        for name in ["A", "%41", "a b", "Mein%20Server", "x%2f", ".DS_Store", ".schreiben-1"] {
+            try Data("HostName=server.example\n".utf8).write(to: sessions.appendingPathComponent(name))
+        }
+        #expect(directory.sessionNames() == ["A", "Mein Server"])
+    }
 }

@@ -81,4 +81,77 @@ final class ConnectionTests: XCTestCase {
         wait(for: [ended], timeout: 10)
         XCTAssertEqual(message, "Verbindung getrennt.")
     }
+
+    /// Gespeicherte Sitzung: plink lädt sie direkt (`-load <Name>`), die Datei bleibt nach dem Ende erhalten.
+    func testSavedSessionConnectsAndStays() throws {
+        let probe: (descriptor: Int32, port: Int) = try localSocket(listening: false)
+        close(probe.descriptor)
+        let folder: URL = FileManager.default.temporaryDirectory.appendingPathComponent("TunnelTerminalTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: folder)
+        var file: SessionFile = SessionFile()
+        file.setConnectionProtocol(.raw)
+        try file.setHostName("127.0.0.1")
+        try file.setPortNumber(probe.port)
+        try directory.write(file, sessionName: "Test/Mein Raw")
+
+        let connection: Connection = try Connection(savedSession: "Test/Mein Raw", puttyDirectory: { directory })
+        XCTAssertEqual(connection.displayName, "Test/Mein Raw")
+        XCTAssertNil(connection.quickAddress)
+        let ended: XCTestExpectation = expectation(description: "Verbindungsende")
+        var bytes: [UInt8] = []
+        connection.onOutput = { bytes.append(contentsOf: $0) }
+        connection.onEnd = { _ in ended.fulfill() }
+        try connection.start(columns: 80, rows: 24)
+        wait(for: [ended], timeout: 15)
+        XCTAssertTrue(String(decoding: bytes, as: UTF8.self).contains("refused"))
+        XCTAssertEqual(directory.sessionNames(), ["Test/Mein Raw"])
+        XCTAssertEqual(try directory.read(sessionNamed: "Test/Mein Raw"), file)
+    }
+
+    /// Inspektor: Einstellungen der Schnellsitzung bzw. der gespeicherten Sitzung (ohne Zwischendatei).
+    func testSettingsForInspector() throws {
+        let folder: URL = FileManager.default.temporaryDirectory.appendingPathComponent("TunnelTerminalTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: folder)
+        var file: SessionFile = SessionFile()
+        try file.setHostName("server.example")
+        try directory.write(file, sessionName: "Gespeichert")
+        XCTAssertEqual(try Connection(savedSession: "Gespeichert", puttyDirectory: { directory }).settings(), file)
+        let quick: Connection = try Connection(endpoint: try Endpoint(parsing: "test@192.0.2.1"), connectionProtocol: .ssh,
+                                               puttyDirectory: { directory })
+        XCTAssertEqual(quick.settings()?.hostName, "192.0.2.1")
+        XCTAssertEqual(directory.sessionNames(), ["Gespeichert"])   // nur gelesen, nichts geschrieben
+        XCTAssertNil(try Connection(savedSession: "Fehlt", puttyDirectory: { directory }).settings())
+    }
+
+    func testSavedSessionNameIsChecked() {
+        XCTAssertThrowsError(try Connection(savedSession: "-proxycmd x"))
+        XCTAssertThrowsError(try Connection(savedSession: AppIdentity.quickSessionPrefix + "x"))
+    }
+
+    /// Rückfrage auch für Gefahren aus einer SSH-Proxy-Sitzung; nicht lesbare Sitzung: kein Verbinden (S4).
+    func testWarningsFollowProxySessionsAndFailClosed() throws {
+        let folder: URL = FileManager.default.temporaryDirectory.appendingPathComponent("TunnelTerminalTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let directory: PuTTYDirectory = try PuTTYDirectory(url: folder)
+        var proxy: SessionFile = SessionFile()
+        try proxy.setValue("5", forKey: "ProxyMethod")
+        try proxy.setValue("nc %host %port", forKey: "ProxyTelnetCommand")
+        try directory.write(proxy, sessionName: "Sprung")
+        var main: SessionFile = SessionFile()
+        try main.setHostName("server.example")
+        try main.setValue("6", forKey: "ProxyMethod")
+        try main.setValue("Sprung", forKey: "ProxyHost")
+        try directory.write(main, sessionName: "Ziel")
+
+        let connection: Connection = try Connection(savedSession: "Ziel", puttyDirectory: { directory })
+        XCTAssertEqual(try connection.warningsRequiringConfirmation(), [.viaProxy("Sprung", .localProxyCommand("nc  22"))])
+
+        try Data(count: PuTTYDirectory.maximumSessionSize + 1)
+            .write(to: folder.appendingPathComponent("sessions").appendingPathComponent("Sprung"))
+        XCTAssertThrowsError(try connection.warningsRequiringConfirmation())
+        XCTAssertTrue(try Connection(endpoint: try Endpoint(parsing: "server.example"), connectionProtocol: .ssh)
+            .warningsRequiringConfirmation().isEmpty)
+    }
 }

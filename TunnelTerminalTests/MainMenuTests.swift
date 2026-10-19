@@ -27,4 +27,41 @@ final class MainMenuTests: XCTestCase {
         XCTAssertEqual(MainMenu.build().items.map(\.title),
                        [AppIdentity.name, "Ablage", "Bearbeiten", "Darstellung", "Verbindung", "Fenster", "Hilfe"])
     }
+
+    /// Gerüst B: Seitenleiste ⌃⌘S, Inspektor ⌥⌘I, Schnellverbindung ⇧⌘K; ⌘K bleibt für M4 frei, „Sitzungen“-Fenster gibt es nicht mehr.
+    func testWorkbenchCommands() throws {
+        let menu: NSMenu = MainMenu.build()
+        var all: [NSMenuItem] = []
+        func walk(_ menu: NSMenu) {
+            for item in menu.items {
+                all.append(item)
+                if let submenu = item.submenu { walk(submenu) }
+            }
+        }
+        walk(menu)
+        func item(_ action: Selector) throws -> NSMenuItem { try XCTUnwrap(all.first { $0.action == action }) }
+        let sidebar: NSMenuItem = try item(#selector(NSSplitViewController.toggleSidebar(_:)))
+        XCTAssertEqual(sidebar.keyEquivalent, "s")
+        XCTAssertEqual(sidebar.keyEquivalentModifierMask, [.command, .control])
+        let inspector: NSMenuItem = try item(#selector(NSSplitViewController.toggleInspector(_:)))
+        XCTAssertEqual(inspector.keyEquivalent, "i")
+        XCTAssertEqual(inspector.keyEquivalentModifierMask, [.command, .option])
+        let quick: NSMenuItem = try item(#selector(ConnectionWindowController.focusQuickConnect(_:)))
+        XCTAssertEqual(quick.keyEquivalent, "k")
+        XCTAssertEqual(quick.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertFalse(all.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command })
+        XCTAssertFalse(all.contains { $0.title == "Sitzungen" })
+    }
+
+    /// ⌘Z/⇧⌘Z für Sitzungen (Plan M2), ⌘⌫ löscht Sitzungen; Duplizieren ohne Kürzel (⌘D bleibt für M4 frei).
+    func testEditMenuHasUndoAndSessionCommands() throws {
+        let edit: NSMenu = try XCTUnwrap(MainMenu.build().items.first { $0.title == "Bearbeiten" }?.submenu)
+        let byTitle: [String: NSMenuItem] = Dictionary(uniqueKeysWithValues: edit.items.filter { !$0.isSeparatorItem }
+            .map { ($0.title, $0) })
+        XCTAssertEqual(byTitle["Widerrufen"]?.action, Selector(("undo:")))
+        XCTAssertEqual(byTitle["Widerrufen"]?.keyEquivalent, "z")
+        XCTAssertEqual(byTitle["Wiederholen"]?.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertEqual(byTitle["Löschen"]?.keyEquivalent, "\u{8}")
+        XCTAssertEqual(byTitle["Duplizieren"]?.keyEquivalent, "")
+    }
 }

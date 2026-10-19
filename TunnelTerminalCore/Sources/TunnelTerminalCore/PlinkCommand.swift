@@ -11,7 +11,7 @@ public struct PlinkCommand: Equatable, Sendable {
     private static let passedThrough: [String] = ["HOME", "LANG", "LOGNAME", "SSH_AUTH_SOCK", "USER"]
 
     public init(sessionName: String, puttyDirectory: String, parentEnvironment: [String: String]) throws(InputError) {
-        try InputRules.checkName(sessionName, as: .sessionName, maxLength: 200)
+        try InputRules.checkSessionName(sessionName)
         arguments = ["-load", sessionName]
 
         var values: [String: String] = [
