@@ -31,6 +31,8 @@ public enum InputError: Error, Equatable, Sendable {
     case nameTaken
     case profileNameTaken
     case notAbsolute
+    case proxyLoop
+    case forwardingTaken
 
     /// Meldung für die Oberfläche.
     public var message: String {
@@ -52,6 +54,8 @@ public enum InputError: Error, Equatable, Sendable {
         case .profileNameTaken: "Ein Profil mit diesem Namen gibt es schon."
         case .outOfRange(let field): "\(field.rawValue) liegt außerhalb des erlaubten Bereichs."
         case .notAbsolute: "Der Pfad muss vollständig sein (mit „/“ am Anfang)."
+        case .forwardingTaken: "Für diesen Port gibt es schon eine Weiterleitung."
+        case .proxyLoop: "Die SSH-Proxy-Sitzungen verweisen im Kreis aufeinander – plink würde endlos weiterverbinden."
         }
     }
 }

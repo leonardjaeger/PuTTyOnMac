@@ -49,6 +49,8 @@ final class Connection {
     /// Sitzungsprotokoll der App (M4), solange die Verbindung läuft; nur für gespeicherte Sitzungen mit `LogType`.
     private(set) var log: SessionLogWriter?
     private let logFolder: URL
+    /// Lokale Ports der Weiterleitungen, die beim Start schon belegt waren (M5): plink meldet das nur mit `-v`.
+    private(set) var busyLocalPorts: [Int] = []
 
     /// `puttyDirectory` nur für Tests ändern (eigener Ordner statt Application Support, RL 3.9).
     init(endpoint: Endpoint, connectionProtocol: ConnectionProtocol,
@@ -99,7 +101,8 @@ final class Connection {
     func warningsRequiringConfirmation() throws -> [SessionWarning] {
         guard quickSession == nil else { return [] }
         let directory: PuTTYDirectory = try puttyDirectory()
-        return try SessionWarning.requiringConfirmation(for: try directory.read(sessionNamed: sessionName)) { name in
+        return try SessionWarning.requiringConfirmation(for: try directory.read(sessionNamed: sessionName),
+                                                      named: sessionName) { name in
             directory.exists(sessionNamed: name) ? try directory.read(sessionNamed: name) : nil
         }
     }
@@ -115,17 +118,29 @@ final class Connection {
         let directory: PuTTYDirectory
         let command: PlinkCommand
         let secret: Data?
+        let saved: SessionFile?
         do {
             directory = try puttyDirectory()
             if let quickSession { try directory.write(quickSession, sessionName: sessionName) }
-            let saved: SessionFile? = quickSession == nil ? try? directory.read(sessionNamed: sessionName) : nil
+            saved = quickSession == nil ? try? directory.read(sessionNamed: sessionName) : nil
             secret = storedPassword(from: saved)
             command = try PlinkCommand(sessionName: sessionName, puttyDirectory: directory.url.path,
                                        parentEnvironment: ProcessInfo.processInfo.environment,
                                        passwordFromPipe: secret != nil)
+            if let saved, saved.connectionProtocol == .serial, saved.serialLine.isEmpty {
+                throw TerminalProcess.Failure(message: "Kein serielles Gerät gewählt – im Sitzungs-Editor eines wählen.")
+            }
             if saved?.sessionLogEnabled == true { openLog() }
+        } catch let failure as TerminalProcess.Failure {
+            throw failure
         } catch {
             throw TerminalProcess.Failure(message: "Sitzung konnte nicht vorbereitet werden: \(error.localizedDescription)")
+        }
+        if let saved, saved.connectionProtocol == .ssh {
+            busyLocalPorts = saved.localListenPorts.filter(PortCheck.isInUse)
+            for port in busyLocalPorts {
+                note("Lokaler Port \(port) ist schon belegt – diese Weiterleitung richtet plink nicht ein.")
+            }
         }
         let temporary: String? = quickSession == nil ? nil : sessionName
         process.onOutput = { [weak self] bytes in

@@ -8,6 +8,10 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Der Server kann die Schlüssel im ssh-agent dieses Macs benutzen.
     case agentForwarding
     case portForwardings(String)
+    /// Lokale Weiterleitungen nehmen auch Verbindungen anderer Rechner an (`LocalPortAcceptAll` oder Bindadresse, M5).
+    case openLocalPorts
+    /// Seriell mit einem Pfad außerhalb von /dev: plink öffnet ihn zum Lesen und Schreiben (M5).
+    case serialDevice(String)
     /// Sitzungsprotokoll an (`LogType` 1/2): Die App speichert die Ausgabe in ihrem Protokollordner (M4).
     case sessionLog
     /// SSH-Paketprotokoll von plink (`LogType` 3/4) in diese Datei – enthält alles Getippte (M4).
@@ -34,7 +38,7 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Beim Import nicht vorausgewählt: Gefährliches und alles, was eine Datei auf diesem Mac schreibt.
     public var blocksPreselection: Bool {
         switch self {
-        case .sessionLog, .packetLog, .manualHostKeys: true
+        case .sessionLog, .packetLog, .manualHostKeys, .openLocalPorts, .serialDevice: true
         default: isDangerous
         }
     }
@@ -45,6 +49,8 @@ public indirect enum SessionWarning: Equatable, Sendable {
         case .remoteCommand(let command): "Führt auf dem Server diesen Befehl aus: \(Self.visible(command))"
         case .agentForwarding: "Agent-Weiterleitung: Der Server kann die Schlüssel aus dem ssh-agent dieses Macs benutzen."
         case .portForwardings(let rules): "Port-Weiterleitungen: \(Self.visible(rules))"
+        case .openLocalPorts: "Lokale Weiterleitungen nehmen auch Verbindungen anderer Rechner im Netz an."
+        case .serialDevice(let path): "Seriell über einen Pfad außerhalb von /dev: \(Self.visible(path))"
         case .sessionLog: "Sitzungsprotokoll an: Die App speichert die Ausgabe des Servers in ihrem Protokollordner."
         case .packetLog(let path): "plink schreibt ein SSH-Paketprotokoll mit allen Eingaben (auch in der Shell getippten "
             + "Passwörtern) nach: \(Self.visible(path)). Abschalten: Sitzungsprotokoll im Editor ein- und wieder ausschalten."
@@ -76,14 +82,18 @@ extension SessionWarning {
     /// Alles Gefährliche, das vor dem Verbinden bestätigt werden muss – auch aus Sitzungen, die PuTTY als SSH-Proxy lädt:
     /// `ProxyHost` als Name einer gespeicherten Sitzung, sonst die Standardeinstellungen (`do_defaults`, proxy/sshproxy.c).
     /// `load` liefert `nil`, wenn es die Sitzung nicht gibt, und wirft, wenn sie nicht lesbar ist (dann nicht verbinden).
-    public static func requiringConfirmation(for file: SessionFile,
+    /// Verweisen Proxy-Sitzungen im Kreis aufeinander (auch auf `name` selbst), wirft es `InputError.proxyLoop`: plink
+    /// verbände sonst endlos, ohne etwas zu melden (gemessen in M5).
+    public static func requiringConfirmation(for file: SessionFile, named name: String? = nil,
                                              load: (String) throws -> SessionFile?) throws -> [SessionWarning] {
-        var visited: Set<String> = []
+        var visited: Set<String> = Set(name.map { [SessionName.fileKey($0)] } ?? [])
         return try dangers(in: file, load: load, visited: &visited)
     }
 
     private static func dangers(in file: SessionFile, load: (String) throws -> SessionFile?,
                                 visited: inout Set<String>) throws -> [SessionWarning] {
+        // Werte, die plink nicht sicher bzw. nicht eindeutig liest: wie eine unlesbare Datei (nicht verbinden)
+        guard !file.hasDanglingEscapeInPortForwardings, !file.hasUndefinedProxy else { throw InputError.invalidFile }
         var result: [SessionWarning] = file.warnings.filter(\.isDangerous)
         guard let host = file.sshProxyHost else { return result }
         var name: String = host
@@ -92,7 +102,8 @@ extension SessionWarning {
             name = SessionName.defaultSettings
             proxy = try load(name)
         }
-        guard let proxy, visited.insert(SessionName.fileKey(name)).inserted else { return result }
+        guard let proxy else { return result }
+        guard visited.insert(SessionName.fileKey(name)).inserted else { throw InputError.proxyLoop }
         result += try dangers(in: proxy, load: load, visited: &visited).map { .viaProxy(name, $0) }
         return result
     }
@@ -106,6 +117,7 @@ extension SessionFile {
         if let command = value(forKey: "RemoteCommand"), !command.isEmpty { result.append(.remoteCommand(command)) }
         if integer(forKey: "AgentFwd") ?? 0 != 0 { result.append(.agentForwarding) }
         if let rules = value(forKey: "PortForwardings"), !rules.isEmpty { result.append(.portForwardings(rules)) }
+        if opensLocalPortsToNetwork { result.append(.openLocalPorts) }
         switch integer(forKey: "LogType") ?? 0 {
         case 1, 2: result.append(.sessionLog)
         case 3, 4: result.append(.packetLog(value(forKey: "LogFileName") ?? "putty.log"))
@@ -113,18 +125,20 @@ extension SessionFile {
         }
         if let library = value(forKey: "GSSCustom"), !library.isEmpty { result.append(.gssLibrary(library)) }
         if let proxy = sshProxyHost { result.append(.proxySession(proxy)) }
+        if connectionProtocol == .serial, !serialLine.isEmpty, !serialLine.hasPrefix("/dev/") { result.append(.serialDevice(serialLine)) }
         if let keys = value(forKey: "SSHManualHostKeys"), !keys.isEmpty { result.append(.manualHostKeys) }
         return result
     }
 
     /// `ProxyHost` bei einem SSH-Proxy (`ProxyMethod` 6–8, PROXY_SSH_TCPIP/EXEC/SUBSYSTEM); PuTTYs Standard ist „proxy“.
     var sshProxyHost: String? {
-        guard let method = integer(forKey: "ProxyMethod"), (6...8).contains(method) else { return nil }
+        guard connectionProtocol != .serial, let method = integer(forKey: "ProxyMethod"), (6...8).contains(method) else { return nil }
         return value(forKey: "ProxyHost") ?? "proxy"
     }
 
     /// `ProxyMethod` 5 (PROXY_CMD); fehlt der Wert oder liegt er außerhalb 0…8, gilt das alte `ProxyType` mit 4 (conf-enums.h).
     private var localProxyCommand: String? {
+        guard connectionProtocol != .serial else { return nil }   // Seriell öffnet keine Netzverbindung
         let isLocal: Bool
         if let method = integer(forKey: "ProxyMethod"), (0...8).contains(method) {
             isLocal = method == 5
@@ -132,7 +146,7 @@ extension SessionFile {
             isLocal = integer(forKey: "ProxyType") == 4
         }
         guard isLocal else { return nil }
-        return expandedProxyCommand(value(forKey: "ProxyTelnetCommand") ?? "connect %host %port\\n")   // PuTTYs Standardwert
+        return expandedProxyCommand(proxyCommand)
     }
 
     /// Befehl so, wie plink ihn ausführt (utils/format_connection_setup_command.c): `\\`, `\%`, `\r`, `\n`, `\t`,
@@ -140,7 +154,7 @@ extension SessionFile {
     /// So kann nichts hinter Platzhaltern oder Escapes versteckt werden. Das Passwort erscheint nur als „••••“.
     func expandedProxyCommand(_ template: String) -> String {
         let fields: [(String, String)] = [
-            ("proxyhost", value(forKey: "ProxyHost") ?? "proxy"), ("proxyport", String(integer(forKey: "ProxyPort") ?? 80)),
+            ("proxyhost", proxyHost), ("proxyport", String(proxyPort)),
             ("host", hostName), ("port", String(portNumber)), ("user", value(forKey: "ProxyUsername") ?? ""),
             ("pass", (value(forKey: "ProxyPassword") ?? "").isEmpty ? "" : "••••")
         ]

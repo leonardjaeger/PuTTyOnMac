@@ -2,7 +2,7 @@ import SwiftUI
 import TunnelTerminalCore
 
 /// Inspektor rechts im Hauptfenster (Plan 3.1): Abschnitte „Verbindung“ (M2, Profil seit M4) und „Hostschlüssel“ (M3, nur SSH);
-/// weitere kommen mit ihren Funktionen (Tunnel M5, Dateien M6), nie als Platzhalter.
+/// „Tunnel“ (M5, nur SSH); „Dateien“ kommt mit M6, nie als Platzhalter.
 struct ConnectionInspector: View {
     @Bindable var info: ConnectionInfo
     let profiles: ProfileStore
@@ -17,16 +17,21 @@ struct ConnectionInspector: View {
                             .monospaced()
                             .textSelection(.enabled)
                     }
-                    LabeledContent("Benutzer") {
-                        if let user = summary.user {
-                            Text(user)
-                                .monospaced()
-                                .textSelection(.enabled)
-                        } else {
-                            Text("Beim Verbinden fragen")
+                    if summary.showsUser {
+                        LabeledContent("Benutzer") {
+                            if let user = summary.user {
+                                Text(user)
+                                    .monospaced()
+                                    .textSelection(.enabled)
+                            } else {
+                                Text("Beim Verbinden fragen")
+                            }
                         }
                     }
                     LabeledContent("Verbindungsart", value: summary.protocolTitle)
+                    if let proxy = summary.proxy {
+                        LabeledContent("Über", value: proxy)
+                    }
                     let fromKeychain: Bool = info.hasStoredPassword && summary.endsWithPassword
                     LabeledContent("Anmeldung", value: summary.authentication + (fromKeychain ? " aus dem Schlüsselbund" : ""))
                     Picker("Profil", selection: $info.profileID) {
@@ -38,6 +43,9 @@ struct ConnectionInspector: View {
                 }
                 if info.showsHostKeys {
                     HostKeyInspectorSection(info: info)
+                }
+                if summary.showsTunnels && (info.editableSession != nil || !summary.portForwardings.isEmpty) {
+                    TunnelInspectorSection(info: info, forwardings: summary.portForwardings)
                 }
             }
             .formStyle(.grouped)

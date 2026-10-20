@@ -85,6 +85,8 @@ enum MainMenu {
         connection.addItem(.separator())
         connection.addItem(item("Verbinden", #selector(ConnectionWindowController.connectSessions(_:))))
         connection.addItem(item("Sitzung bearbeiten …", #selector(ConnectionWindowController.editSession(_:))))
+        // wie der Symbolleisten-Knopf „Tunnel“ (jeder Symbolleisten-Befehl steht auch im Menü, RL 3.4 Regel 5)
+        connection.addItem(item("Tunnel bearbeiten …", #selector(ConnectionWindowController.editTunnels(_:))))
         connection.addItem(.separator())
         connection.addItem(item("Erneut verbinden", #selector(ConnectionWindowController.reconnect(_:)), "r"))
         connection.addItem(item("Verbindung duplizieren", #selector(ConnectionWindowController.duplicateConnection(_:)), "d"))

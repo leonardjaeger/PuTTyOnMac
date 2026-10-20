@@ -25,6 +25,10 @@ final class ConnectionInfo {
     var rows: Int?
     /// Die App schreibt ein Sitzungsprotokoll (M4).
     var isLogging: Bool = false
+    /// Lokale Ports der Weiterleitungen, die vor dem Start belegt waren (M5).
+    var busyPorts: [Int] = []
+    /// Gespeicherte Sitzung dieses Tabs (für „Tunnel bearbeiten …“); `nil` bei Schnellverbindungen.
+    var editableSession: String?
 
     var statusText: String {
         isRunning ? (isConnecting ? "Verbinde …" : "Verbunden") : (endMessage ?? "Nicht verbunden")

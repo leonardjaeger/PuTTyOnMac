@@ -7,17 +7,32 @@ public struct ConnectionSummary: Equatable, Sendable {
     public let server: String
     /// `nil`: plink fragt beim Verbinden.
     public let user: String?
+    /// Zeile „Benutzer“ nur, wo es einen gibt (nicht bei Raw und Seriell).
+    public let showsUser: Bool
     public let protocolTitle: String
     public let authentication: String
     /// Ohne Schlüsseldatei endet die Anmeldung beim Passwort (Agent vorher oder nicht): dort setzt ein gespeichertes
     /// Passwort an (M3).
     public let endsWithPassword: Bool
+    /// Inspektor-Abschnitt „Tunnel“ (M5): Weiterleitungen wirken nur bei SSH.
+    public let showsTunnels: Bool
+    /// Proxy bzw. Jump-Host in Worten (M5); `nil` ohne Proxy und bei Seriell.
+    public let proxy: String?
+    public let portForwardings: [PortForwarding]
 
     public init(file: SessionFile) {
         let host: String = file.hostName
         let shownHost: String = host.contains(":") ? "[\(host)]" : host
-        server = host.isEmpty ? "–" : SessionWarning.visible("\(shownHost):\(file.portNumber)")
-        user = file.userName.isEmpty ? nil : SessionWarning.visible(file.userName)
+        if file.connectionProtocol == .serial {
+            server = file.serialLine.isEmpty ? "–" : SessionWarning.visible("\(file.serialLine), \(file.serialSpeed) Baud")
+        } else {
+            server = host.isEmpty ? "–" : SessionWarning.visible("\(shownHost):\(file.portNumber)")
+        }
+        user = file.userName.isEmpty || file.connectionProtocol == .serial ? nil : SessionWarning.visible(file.userName)
+        showsUser = file.connectionProtocol != .raw && file.connectionProtocol != .serial
+        showsTunnels = file.connectionProtocol == .ssh
+        proxy = file.connectionProtocol == .serial ? nil : file.proxyDescription.map(SessionWarning.visible)
+        portForwardings = showsTunnels ? file.portForwardings : []
         let rawProtocol: String = file.value(forKey: "Protocol") ?? "ssh"
         protocolTitle = file.connectionProtocol?.title ?? "Anderes (\(SessionWarning.visible(rawProtocol)))"
         endsWithPassword = file.connectionProtocol == .ssh && (file.value(forKey: "PublicKeyFile") ?? "").isEmpty
@@ -32,7 +47,7 @@ public struct ConnectionSummary: Equatable, Sendable {
                 authentication = "Passwort"
             }
         case .telnet: authentication = "Im Terminal (Telnet)"
-        case .raw, nil: authentication = "Keine"
+        case .raw, .serial, nil: authentication = "Keine"
         }
     }
 }

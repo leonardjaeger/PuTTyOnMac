@@ -40,7 +40,7 @@ final class SessionLibrary {
         let folded: String = reservedPrefix.lowercased()
         let previous: [String] = names
         names = directory.sessionNames().filter { !$0.lowercased().hasPrefix(folded) }
-        hosts = Dictionary(names.map { ($0, file(named: $0)?.hostName ?? "") }, uniquingKeysWith: { first, _ in first })
+        hosts = Dictionary(names.map { ($0, file(named: $0)?.listAddress ?? "") }, uniquingKeysWith: { first, _ in first })
         if countsAsChange ?? (names != previous) { revision += 1 }
     }
 
@@ -78,7 +78,7 @@ final class SessionLibrary {
     func save(_ file: SessionFile, as name: String) throws {
         try directory.write(file, sessionName: name)
         // Erstes Speichern der Standardeinstellungen: in die Liste, ohne den Editor neu aufzubauen
-        if !names.contains(name) { reload(countsAsChange: false) } else { hosts[name] = file.hostName }
+        if !names.contains(name) { reload(countsAsChange: false) } else { hosts[name] = file.listAddress }
     }
 
     // MARK: - Änderungen mit Undo

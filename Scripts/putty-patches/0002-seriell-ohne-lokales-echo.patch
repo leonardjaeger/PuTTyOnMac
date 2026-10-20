@@ -1,0 +1,24 @@
+Seriell über plink: Terminal im Zeilenmodus mit lokalem Echo.
+
+unix/plink.c ruft ldisc_create() (die Leitungsdisziplin meldet ihren Modus) auf, bevor
+local_tty gesetzt ist – plink_echoedit_update() übergeht diese Meldung –, und setzt danach
+das Terminal fest auf „Echo + Zeilenpuffer“ (seat_echoedit_update(1, 1)). SSH und Telnet
+melden ihren Modus später erneut, Seriell nie (serial_ldisc: immer aus, provide_ldisc leer).
+Gemessen am 20.10.2026 an einem PTY-Paar (docs/M5-Machbarkeit.md): Zeichen erst nach Return,
+lokales Echo, Ctrl-C erreicht das Gerät nicht, Return kommt als LF an. Mit dem Patch startet
+plink bei Protocol=serial mit Echo und Zeilenpuffer aus – so, wie serial_ldisc es meldet.
+Andere Protokolle unverändert. Mit Leonards Zustimmung vom 20.10.2026 (nur Seriell).
+
+--- a/unix/plink.c	2026-10-20 14:58:46.248001563 +0000
++++ b/unix/plink.c	2026-10-20 14:58:46.256001563 +0000
+@@ -979,7 +979,9 @@
+      */
+     local_tty = (tcgetattr(STDIN_FILENO, &orig_termios) == 0);
+     atexit(cleanup_termios);
+-    seat_echoedit_update(plink_seat, 1, 1);
++    /* Seriell: Echo und Zeilenpuffer bleiben aus (serial_ldisc), sonst erreichen Ctrl-C und CR das Gerät nie */
++    seat_echoedit_update(plink_seat, conf_get_int(conf, CONF_protocol) != PROT_SERIAL,
++                         conf_get_int(conf, CONF_protocol) != PROT_SERIAL);
+ 
+     cli_main_loop(plink_pw_setup, plink_pw_check, plink_continue, NULL);
+ 

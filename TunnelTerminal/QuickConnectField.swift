@@ -17,7 +17,7 @@ struct QuickConnectField: View {
                 .onSubmit(quick.submit)
                 .help("Adresse eingeben und Return drücken (⇧⌘K)")
             Picker("Protokoll", selection: $quick.connectionProtocol) {
-                ForEach(ConnectionProtocol.allCases) { option in
+                ForEach(ConnectionProtocol.quickConnectCases) { option in
                     Text(option.title).tag(option)
                 }
             }

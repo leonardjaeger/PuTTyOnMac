@@ -60,7 +60,7 @@ struct SessionSettingsTests {
         let file: SessionFile = try SessionFile(contents: Self.realistic)
         #expect(file.hostName == "server.example")
         #expect(file.userName == "test")
-        #expect(file.otherEntryCount == 15)   // LogType bearbeitet der Editor seit M4 (Sitzungsprotokoll)
+        #expect(file.otherEntryCount == 12)   // LogType seit M4, ProxyMethod/ProxyHost/ProxyTelnetCommand seit M5
     }
 
     @Test("Bearbeiten ändert nur die bearbeiteten Zeilen; alles andere bleibt byte-gleich")
@@ -105,7 +105,7 @@ struct SessionSettingsTests {
     @Test("Unbekanntes Protokoll wird nicht als SSH ausgegeben")
     func unknownProtocol() throws {
         var file: SessionFile = SessionFile()
-        try file.setValue("serial", forKey: "Protocol")
+        try file.setValue("supdup", forKey: "Protocol")   // Seriell bietet die App seit M5 an
         #expect(file.connectionProtocol == nil)
     }
 

@@ -10,6 +10,8 @@ struct SessionEditor: View {
 
     let model: SessionsModel
     let name: String
+    /// Aus „Tunnel bearbeiten …“: zum Abschnitt „Tunnel“ blättern (M5).
+    var showsTunnels: Bool = false
 
     @State private var file: SessionFile
     @State private var title: String
@@ -29,9 +31,10 @@ struct SessionEditor: View {
     @State private var errors: [Field: String] = [:]
     @FocusState private var focus: Field?
 
-    init(model: SessionsModel, name: String, file: SessionFile) {
+    init(model: SessionsModel, name: String, file: SessionFile, showsTunnels: Bool = false) {
         self.model = model
         self.name = name
+        self.showsTunnels = showsTunnels
         _file = State(initialValue: file)
         _title = State(initialValue: SessionName.title(of: name))
         _group = State(initialValue: SessionName.group(of: name) ?? "")
@@ -51,96 +54,115 @@ struct SessionEditor: View {
 
     private var isDefaultSettings: Bool { name == SessionName.defaultSettings }
 
+    /// Gespeicherte SSH-Sitzungen außer dieser (Jump-Host, M5); Schleifen über mehrere Sitzungen lehnt das Verbinden ab.
+    private var jumpCandidates: [String] {
+        model.library.names.filter { $0 != name && $0 != SessionName.defaultSettings
+            && model.library.file(named: $0)?.connectionProtocol == .ssh }
+    }
+
     var body: some View {
-        Form {
-            if !file.warnings.isEmpty {
-                Section("Hinweise") {
-                    ForEach(Array(file.warnings.enumerated()), id: \.offset) { _, warning in
-                        Label(warning.message, systemImage: warning.isDangerous ? "exclamationmark.triangle.fill" : "info.circle")
-                            .foregroundStyle(warning.isDangerous ? Color.orange : Color.primary)
+        ScrollViewReader { reader in
+            Form {
+                if !file.warnings.isEmpty {
+                    Section("Hinweise") {
+                        ForEach(Array(file.warnings.enumerated()), id: \.offset) { _, warning in
+                            Label(warning.message, systemImage: warning.isDangerous ? "exclamationmark.triangle.fill" : "info.circle")
+                                .foregroundStyle(warning.isDangerous ? Color.orange : Color.primary)
+                        }
+                    }
+                }
+                Section("Sitzung") {
+                    if isDefaultSettings {
+                        LabeledContent("Name", value: "Standardeinstellungen")
+                    } else {
+                        TextField("Name", text: $title)
+                            .focused($focus, equals: .title)
+                            .onSubmit(commitName)
+                        TextField("Gruppe", text: $group, prompt: Text("Keine"))
+                            .focused($focus, equals: .group)
+                            .onSubmit(commitName)
+                        ErrorText(errors[.title])
+                    }
+                    if connectionProtocol != .serial {
+                        TextField("Server", text: $host, prompt: Text("server.example"))
+                            .focused($focus, equals: .host)
+                        ErrorText(errors[.host])
+                    }
+                    Picker("Protokoll", selection: $connectionProtocol) {
+                        ForEach(ConnectionProtocol.allCases) { option in
+                            Text(option.title).tag(Optional(option))
+                        }
+                        if connectionProtocol == nil {
+                            Text("Anderes (\(file.value(forKey: "Protocol") ?? ""))").tag(ConnectionProtocol?.none)
+                        }
+                    }
+                    if connectionProtocol != .serial {
+                        TextField("Port", text: $port)
+                            .focused($focus, equals: .port)
+                        ErrorText(errors[.port])
+                        TextField("Benutzername", text: $user, prompt: Text("Beim Verbinden fragen"))
+                            .focused($focus, equals: .user)
+                        ErrorText(errors[.user])
+                    }
+                }
+                if connectionProtocol == .serial {
+                    SerialEditorSection(file: file, apply: apply)
+                }
+                Section {
+                    TextField("Terminaltyp", text: $terminalType)
+                        .focused($focus, equals: .terminalType)
+                    ErrorText(errors[.terminalType])
+                    Picker("Profil", selection: $profileID) {
+                        ForEach(model.profiles.profiles) { profile in
+                            Text(SessionWarning.visible(profile.name)).tag(profile.id)
+                        }
+                    }
+                    Toggle("Sitzungsprotokoll", isOn: $sessionLog)
+                } header: {
+                    Text("Terminal")
+                } footer: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Das Protokoll enthält alles, was im Terminal erscheint – auch getippte Befehle, nicht aber verdeckte "
+                             + "Eingaben wie Passwörter.")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Protokolle zeigen", action: revealLogs)
+                    }
+                }
+                if connectionProtocol != .serial {
+                    Section("Verbindung") {
+                        TextField("Keepalive alle (Sekunden)", text: $keepalive, prompt: Text("0 = aus"))
+                            .focused($focus, equals: .keepalive)
+                        ErrorText(errors[.keepalive])
+                        Toggle("TCP-Keepalives", isOn: $tcpKeepalives)
+                    }
+                    SessionAuthenticationSection(file: file, sessionName: name, passwords: model.library.passwords) { path in
+                        update(nil) { try $0.setPublicKeyFile(path) }
+                    }
+                    if connectionProtocol == .ssh || isDefaultSettings {
+                        TunnelEditorSection(file: file, apply: apply)
+                            .id(Self.tunnelSection)
+                    }
+                    ProxyEditorSection(file: file, sessionName: name, jumpCandidates: jumpCandidates, apply: apply)
+                    Section {
+                        Toggle("Komprimierung", isOn: $compression)
+                        Toggle("Agent-Weiterleitung", isOn: $agentForwarding)
+                        TextField("Befehl auf dem Server", text: $remoteCommand, prompt: Text("Shell starten"))
+                            .focused($focus, equals: .remoteCommand)
+                        ErrorText(errors[.remoteCommand])
+                    } header: {
+                        Text("SSH")
+                    } footer: {
+                        Text(otherValuesText)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            Section("Sitzung") {
-                if isDefaultSettings {
-                    LabeledContent("Name", value: "Standardeinstellungen")
-                } else {
-                    TextField("Name", text: $title)
-                        .focused($focus, equals: .title)
-                        .onSubmit(commitName)
-                    TextField("Gruppe", text: $group, prompt: Text("Keine"))
-                        .focused($focus, equals: .group)
-                        .onSubmit(commitName)
-                    ErrorText(errors[.title])
-                }
-                TextField("Server", text: $host, prompt: Text("server.example"))
-                    .focused($focus, equals: .host)
-                ErrorText(errors[.host])
-                Picker("Protokoll", selection: $connectionProtocol) {
-                    ForEach(ConnectionProtocol.allCases) { option in
-                        Text(option.title).tag(Optional(option))
-                    }
-                    if connectionProtocol == nil {
-                        Text("Anderes (\(file.value(forKey: "Protocol") ?? ""))").tag(ConnectionProtocol?.none)
-                    }
-                }
-                TextField("Port", text: $port)
-                    .focused($focus, equals: .port)
-                ErrorText(errors[.port])
-                TextField("Benutzername", text: $user, prompt: Text("Beim Verbinden fragen"))
-                    .focused($focus, equals: .user)
-                ErrorText(errors[.user])
-            }
-            Section {
-                TextField("Terminaltyp", text: $terminalType)
-                    .focused($focus, equals: .terminalType)
-                ErrorText(errors[.terminalType])
-                Picker("Profil", selection: $profileID) {
-                    ForEach(model.profiles.profiles) { profile in
-                        Text(SessionWarning.visible(profile.name)).tag(profile.id)
-                    }
-                }
-                Toggle("Sitzungsprotokoll", isOn: $sessionLog)
-            } header: {
-                Text("Terminal")
-            } footer: {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Das Protokoll enthält alles, was im Terminal erscheint – auch getippte Befehle, nicht aber verdeckte "
-                         + "Eingaben wie Passwörter.")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Protokolle zeigen", action: revealLogs)
-                }
-            }
-            Section("Verbindung") {
-                TextField("Keepalive alle (Sekunden)", text: $keepalive, prompt: Text("0 = aus"))
-                    .focused($focus, equals: .keepalive)
-                ErrorText(errors[.keepalive])
-                Toggle("TCP-Keepalives", isOn: $tcpKeepalives)
-            }
-            SessionAuthenticationSection(file: file, sessionName: name, passwords: model.library.passwords) { path in
-                update(nil) { try $0.setPublicKeyFile(path) }
-            }
-            if let proxy = file.proxyDescription {
-                Section("Proxy") {
-                    LabeledContent("Proxy", value: SessionWarning.visible(proxy))
-                    Button("Proxy ausschalten") { update(nil) { $0.disableProxy() } }
-                }
-            }
-            Section {
-                Toggle("Komprimierung", isOn: $compression)
-                Toggle("Agent-Weiterleitung", isOn: $agentForwarding)
-                TextField("Befehl auf dem Server", text: $remoteCommand, prompt: Text("Shell starten"))
-                    .focused($focus, equals: .remoteCommand)
-                ErrorText(errors[.remoteCommand])
-            } header: {
-                Text("SSH")
-            } footer: {
-                Text(otherValuesText)
-                    .foregroundStyle(.secondary)
+            .formStyle(.grouped)
+            .onAppear {
+                if showsTunnels { reader.scrollTo(Self.tunnelSection, anchor: .top) }
             }
         }
-        .formStyle(.grouped)
         .autocorrectionDisabled()
         .onChange(of: focus) { old, new in
             // Tab zwischen Name und Gruppe benennt noch nicht um, erst das Verlassen beider Felder
@@ -183,22 +205,26 @@ struct SessionEditor: View {
         return count == 1 ? "1 weiterer Wert bleibt unverändert." : "\(count) weitere Werte bleiben unverändert."
     }
 
-    /// Wendet eine Änderung an und speichert, wenn sie gültig ist; sonst erscheint die Meldung unter dem Feld.
-    private func update(_ field: Field?, _ change: (inout SessionFile) throws -> Void) {
+    private static let tunnelSection: String = "tunnel"
+
+    /// Änderung anwenden und speichern; Meldung oder `nil` zurück (auch für die Abschnitte Tunnel, Proxy, Seriell, M5).
+    private func apply(_ change: (inout SessionFile) throws -> Void) -> String? {
         var changed: SessionFile = file
         do {
             try change(&changed)
-            guard changed != file else {
-                if let field { errors[field] = nil }
-                return
-            }
+            guard changed != file else { return nil }
             try model.save(changed, as: name)
             file = changed
-            if let field { errors[field] = nil }
+            return nil
         } catch {
-            let message: String = (error as? InputError)?.message ?? error.localizedDescription
-            if let field { errors[field] = message } else { model.report(error) }
+            return (error as? InputError)?.message ?? error.localizedDescription
         }
+    }
+
+    /// Wendet eine Änderung an und speichert, wenn sie gültig ist; sonst erscheint die Meldung unter dem Feld.
+    private func update(_ field: Field?, _ change: (inout SessionFile) throws -> Void) {
+        let message: String? = apply(change)
+        if let field { errors[field] = message } else if let message { model.report(message: message) }
     }
 
     private func number(_ text: String, else failure: InputError) throws(InputError) -> Int {
@@ -235,18 +261,3 @@ struct SessionEditor: View {
     }
 }
 
-/// Meldung unter einem Feld; ohne Meldung nichts.
-private struct ErrorText: View {
-    let message: String?
-
-    init(_ message: String?) {
-        self.message = message
-    }
-
-    var body: some View {
-        if let message {
-            Label(message, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
-        }
-    }
-}

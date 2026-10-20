@@ -11,7 +11,7 @@ struct SessionEditorSheet: View {
         let name: String = model.editing?.name ?? editing.name
         VStack(spacing: 0) {
             if let file = model.editableFile(named: name) {
-                SessionEditor(model: model, name: name, file: file)
+                SessionEditor(model: model, name: name, file: file, showsTunnels: editing.showsTunnels)
                     .id("\(name)#\(model.library.revision)")
             } else {
                 ContentUnavailableView("Sitzung nicht gefunden", systemImage: "questionmark.folder")

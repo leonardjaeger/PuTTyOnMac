@@ -44,10 +44,10 @@ struct ConnectionSummaryTests {
             .authentication == "Im Terminal (Telnet)")
         #expect(ConnectionSummary(file: try file("HostName=server.example\nProtocol=raw\nPortNumber=7\n"))
             .authentication == "Keine")
-        let serial: ConnectionSummary = ConnectionSummary(file: try file("Protocol=serial\nSerialLine=/dev/cu.test\n"))
-        #expect(serial.protocolTitle == "Anderes (serial)")
-        #expect(serial.server == "–")
-        #expect(serial.authentication == "Keine")
+        // seit M5 bietet die App Seriell an; andere Verfahren von plink bleiben „Anderes“
+        let other: ConnectionSummary = ConnectionSummary(file: try file("HostName=server.example\nProtocol=rlogin\n"))
+        #expect(other.protocolTitle == "Anderes (rlogin)")
+        #expect(other.authentication == "Keine")
     }
 
     @Test func ipv6AndHiddenCharactersAreShownSafely() throws {

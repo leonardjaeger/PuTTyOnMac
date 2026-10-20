@@ -15,6 +15,8 @@ final class SessionsModel {
     struct EditedSession: Identifiable {
         let id: UUID = UUID()
         var name: String
+        /// „Tunnel bearbeiten …“ (M5): Editor blättert zum Abschnitt „Tunnel“.
+        var showsTunnels: Bool = false
     }
 
     let library: SessionLibrary
@@ -69,9 +71,9 @@ final class SessionsModel {
     }
 
     /// Öffnet den Editor (nach „Neue Sitzung“).
-    func edit(_ name: String) {
+    func edit(_ name: String, showingTunnels: Bool = false) {
         revealSidebar()
-        editing = EditedSession(name: name)
+        editing = EditedSession(name: name, showsTunnels: showingTunnels)
     }
 
     /// Editor für genau eine ausgewählte Sitzung (Kontextmenü, Stift-Knopf, Verbindung > Sitzung bearbeiten …).
@@ -88,8 +90,12 @@ final class SessionsModel {
     }
 
     func report(_ error: any Error) {
+        report(message: (error as? InputError)?.message ?? error.localizedDescription)
+    }
+
+    func report(message: String) {
         revealSidebar()
-        failure = Failure(message: (error as? InputError)?.message ?? error.localizedDescription)
+        failure = Failure(message: message)
         isShowingFailure = true
     }
 

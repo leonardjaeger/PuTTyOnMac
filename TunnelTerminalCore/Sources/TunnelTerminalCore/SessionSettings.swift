@@ -9,12 +9,19 @@ extension SessionFile {
         case tcpKeepalives = "TCPKeepalives"
         case compression = "Compression"
         case agentForwarding = "AgentFwd"
+        /// Lokale Weiterleitungen auch für andere Rechner im Netz öffnen (PuTTY-Standard: aus).
+        case localPortAcceptAll = "LocalPortAcceptAll"
+        /// Auch Ziele auf diesem Mac über den Proxy (PuTTY-Standard: aus, dann direkt; M5 gemessen).
+        case proxyLocalhost = "ProxyLocalhost"
     }
 
     /// Schlüssel, die der Editor bearbeitet.
     public static let editedKeys: Set<String> = [
         "HostName", "PortNumber", "Protocol", "UserName", "TerminalType", "PingInterval", "PingIntervalSecs",
-        "TCPKeepalives", "Compression", "AgentFwd", "RemoteCommand", "PublicKeyFile", profileKey, "LogType"
+        "TCPKeepalives", "Compression", "AgentFwd", "RemoteCommand", "PublicKeyFile", profileKey, "LogType",
+        "PortForwardings", "LocalPortAcceptAll", "ProxyMethod", "ProxyHost", "ProxyPort", "ProxyUsername",
+        "ProxyTelnetCommand", "ProxyLocalhost", "SerialLine", "SerialSpeed", "SerialDataBits", "SerialStopHalfbits",
+        "SerialParity", "SerialFlowControl"
     ]
 
     /// Eigener Schlüssel der App für das Profil (M4); PuTTY übergeht unbekannte Schlüssel.
@@ -127,7 +134,7 @@ extension SessionFile {
         if connectionProtocol != .ssh { return "Passwörter speichert die App nur für SSH-Sitzungen." }
         if address.host.isEmpty { return "Zuerst einen Server eintragen." }
         if address.user.isEmpty { return "Zuerst einen Benutzernamen eintragen – das Passwort gilt nur für ihn." }
-        if proxyDescription != nil { return "Mit Proxy speichert die App kein Passwort." }
+        if proxyDescription != nil || hasUndefinedProxy { return "Mit Proxy speichert die App kein Passwort." }
         if !(value(forKey: "SSHManualHostKeys") ?? "").isEmpty {
             return "Mit fest vorgegebenen Hostschlüsseln (SSHManualHostKeys) speichert die App kein Passwort."
         }
@@ -201,27 +208,5 @@ extension SessionFile {
     /// Darf leer sein; Zeilenumbrüche werden abgelehnt (S4).
     public mutating func setRemoteCommand(_ command: String) throws(InputError) {
         try setValue(command, forKey: "RemoteCommand")
-    }
-
-    /// Proxy in Worten für den Editor (`ProxyMethod`, conf-enums.h); `nil` ohne Proxy.
-    public var proxyDescription: String? {
-        let method: Int = integer(forKey: "ProxyMethod").flatMap { (0...8).contains($0) ? $0 : nil }
-            ?? [0: 0, 1: 3, 2: 4, 3: 1, 4: 5][integer(forKey: "ProxyType") ?? 0] ?? 0   // altes ProxyType
-        let host: String = value(forKey: "ProxyHost") ?? "proxy"
-        switch method {
-        case 1: return "SOCKS 4 über \(host)"
-        case 2: return "SOCKS 5 über \(host)"
-        case 3: return "HTTP über \(host)"
-        case 4: return "Telnet über \(host)"
-        case 5: return "Lokaler Befehl auf diesem Mac"
-        case 6, 7, 8: return "SSH über „\(host)“"
-        default: return nil
-        }
-    }
-
-    /// Schaltet den Proxy ab (auch das alte `ProxyType`), z. B. einen importierten lokalen Befehl.
-    public mutating func disableProxy() {
-        try? setValue("0", forKey: "ProxyMethod")
-        if value(forKey: "ProxyType") != nil { try? setValue("0", forKey: "ProxyType") }
     }
 }

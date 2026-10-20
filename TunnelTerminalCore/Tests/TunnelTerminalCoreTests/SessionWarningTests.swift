@@ -160,7 +160,8 @@ struct SessionWarningTests {
             .viaProxy("Default Settings", .localProxyCommand("d"))
         ])
         let loop: SessionFile = try #require(try load("Schleife"))
-        #expect(try SessionWarning.requiringConfirmation(for: loop, load: load).isEmpty)
+        // seit M5: Schleife = Fehler (plink verbände endlos)
+        #expect(throws: InputError.proxyLoop) { try SessionWarning.requiringConfirmation(for: loop, load: load) }
         #expect(SessionWarning.viaProxy("B", .localProxyCommand("x")).isDangerous)
         #expect(SessionWarning.viaProxy("B", .localProxyCommand("x")).message.contains("„B“"))
         // Nicht lesbare Proxy-Sitzung: Fehler statt stiller Freigabe

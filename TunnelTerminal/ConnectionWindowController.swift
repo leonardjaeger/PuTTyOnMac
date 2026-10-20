@@ -49,9 +49,12 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     /// Server und Port, deren bekannte Hostschlüssel der Inspektor zeigt (nur SSH, M3).
     private var hostKeyServer: (host: String, port: Int)?
     private var lastHostKeyCheck: Date = .distantPast
+    /// Seriell: Das Gerät ist mit dem Start offen und schweigt oft, bis man tippt (kein „Verbinde …“ bis zur Ausgabe).
+    private var opensInstantly: Bool = false
 
     private static let registryType: UTType = UTType(filenameExtension: "reg") ?? .data
     private static let disconnectItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("trennen")
+    private static let tunnelItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("tunnel")
 
     var isConnected: Bool { connection?.isRunning ?? false }
     var showsSidebar: Bool { !sidebarItem.isCollapsed }
@@ -182,7 +185,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
             warnings = try newConnection.warningsRequiringConfirmation()
         } catch {
             prepare(newConnection)
-            connectionEnded("Nicht verbunden: Die Sitzung ist nicht lesbar (\(error.message))")
+            let reason: String = (error as? InputError) == .proxyLoop ? error.message : "Die Sitzung ist nicht lesbar (\(error.message))"
+            connectionEnded("Nicht verbunden: \(reason)")
             return
         }
         guard !warnings.isEmpty else {
@@ -220,7 +224,10 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         if !sameTarget { info.profileID = profiles.profile(id: settings?.profileID).id }
         applyProfile()
         info.hasStoredPassword = newConnection.hasStoredPassword
+        info.busyPorts = []
+        info.editableSession = savedSessionName(of: newConnection)
         hostKeyServer = settings?.hostKeyServer
+        opensInstantly = settings?.connectionProtocol == .serial
         refreshHostKeys()
     }
 
@@ -292,10 +299,11 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
             return
         }
         info.isRunning = true
-        info.isConnecting = true
+        info.isConnecting = !opensInstantly
         info.endMessage = nil
         info.hasStoredPassword = newConnection.usesStoredPassword
         info.isLogging = newConnection.log != nil
+        info.busyPorts = newConnection.busyLocalPorts
         info.columns = size.cols
         info.rows = size.rows
         if case .saved(let name) = newConnection.target {
@@ -353,6 +361,20 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     @objc func disconnect(_ sender: Any?) {
         connection?.hangUp()
+    }
+
+    /// Symbolleiste „Tunnel“ bzw. Verbindung › Tunnel bearbeiten … (M5): Editor der Sitzung dieses Tabs beim Abschnitt
+    /// „Tunnel“. Änderungen gelten ab dem nächsten Verbinden (plink liest die Sitzung nur beim Start).
+    @objc func editTunnels(_ sender: Any?) {
+        guard window?.attachedSheet == nil, canEditTunnels, let name = info.editableSession else { return }
+        sessions.edit(name, showingTunnels: true)
+    }
+
+    /// Gespeicherte SSH-Sitzung im Tab (nur dort wirken Weiterleitungen).
+    private var canEditTunnels: Bool { info.editableSession != nil && info.summary?.showsTunnels == true }
+
+    private func savedSessionName(of connection: Connection) -> String? {
+        if case .saved(let name) = connection.target { name } else { nil }
     }
 
     /// ⇧⌘K: Fokus in die Schnellverbindung (blendet die Seitenleiste ein).
@@ -592,6 +614,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         case #selector(clearScreenAndHistory(_:)), #selector(copyEverything(_:)),
              #selector(performTextFinderAction(_:)): terminal != nil
         case #selector(duplicateConnection(_:)): connection != nil
+        case #selector(editTunnels(_:)): canEditTunnels
         default: true
         }
     }
@@ -599,7 +622,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     // MARK: - Symbolleiste
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.disconnectItem,
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.tunnelItem, Self.disconnectItem,
          .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
     }
 
@@ -609,17 +632,30 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard itemIdentifier == Self.disconnectItem else { return nil }
         let item: NSToolbarItem = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = "Trennen"
-        item.toolTip = "Verbindung trennen (⌘.)"
-        item.image = NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: "Trennen")
-        item.action = #selector(disconnect(_:))
+        switch itemIdentifier {
+        case Self.disconnectItem:
+            item.label = "Trennen"
+            item.toolTip = "Verbindung trennen (⌘.)"
+            item.image = NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: "Trennen")
+            item.action = #selector(disconnect(_:))
+        case Self.tunnelItem:
+            item.label = "Tunnel"
+            item.toolTip = "Port-Weiterleitungen dieser Sitzung bearbeiten"
+            item.image = NSImage(systemSymbolName: "point.3.connected.trianglepath.dotted", accessibilityDescription: "Tunnel")
+            item.action = #selector(editTunnels(_:))
+        default:
+            return nil
+        }
         return item
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        item.itemIdentifier == Self.disconnectItem ? isConnected : true
+        switch item.itemIdentifier {
+        case Self.disconnectItem: isConnected
+        case Self.tunnelItem: window?.attachedSheet == nil && canEditTunnels
+        default: true
+        }
     }
 
     // MARK: - Fenster
