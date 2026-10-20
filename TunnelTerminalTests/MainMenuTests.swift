@@ -28,7 +28,7 @@ final class MainMenuTests: XCTestCase {
                        [AppIdentity.name, "Ablage", "Bearbeiten", "Darstellung", "Verbindung", "Fenster", "Hilfe"])
     }
 
-    /// Gerüst B: Seitenleiste ⌃⌘S, Inspektor ⌥⌘I, Schnellverbindung ⇧⌘K; ⌘K bleibt für M4 frei, „Sitzungen“-Fenster gibt es nicht mehr.
+    /// Gerüst B: Seitenleiste ⌃⌘S, Inspektor ⌥⌘I, Schnellverbindung ⇧⌘K; „Sitzungen“-Fenster gibt es nicht mehr.
     func testWorkbenchCommands() throws {
         let menu: NSMenu = MainMenu.build()
         var all: [NSMenuItem] = []
@@ -49,11 +49,10 @@ final class MainMenuTests: XCTestCase {
         let quick: NSMenuItem = try item(#selector(ConnectionWindowController.focusQuickConnect(_:)))
         XCTAssertEqual(quick.keyEquivalent, "k")
         XCTAssertEqual(quick.keyEquivalentModifierMask, [.command, .shift])
-        XCTAssertFalse(all.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command })
         XCTAssertFalse(all.contains { $0.title == "Sitzungen" })
     }
 
-    /// ⌘Z/⇧⌘Z für Sitzungen (Plan M2), ⌘⌫ löscht Sitzungen; Duplizieren ohne Kürzel (⌘D bleibt für M4 frei).
+    /// ⌘Z/⇧⌘Z für Sitzungen (Plan M2), ⌘⌫ löscht Sitzungen; Duplizieren ohne Kürzel (⌘D dupliziert die Verbindung, M4).
     func testEditMenuHasUndoAndSessionCommands() throws {
         let edit: NSMenu = try XCTUnwrap(MainMenu.build().items.first { $0.title == "Bearbeiten" }?.submenu)
         let byTitle: [String: NSMenuItem] = Dictionary(uniqueKeysWithValues: edit.items.filter { !$0.isSeparatorItem }
@@ -73,5 +72,34 @@ final class MainMenuTests: XCTestCase {
         XCTAssertTrue(window.items.contains { $0.action == #selector(AppDelegate.showKnownHosts(_:)) })
         let help: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Hilfe" }?.submenu)
         XCTAssertEqual(help.items.first?.action, #selector(AppDelegate.showKeys(_:)))
+    }
+
+    /// M4: ⌘K leert, ⌘D dupliziert die Verbindung, ⌘F/⌘G/⇧⌘G/⌘E suchen, ⌘, öffnet die Einstellungen;
+    /// „Alles kopieren“ und „Titel ändern …“ ohne Kürzel.
+    func testTerminalComfortCommands() throws {
+        var all: [NSMenuItem] = []
+        func walk(_ menu: NSMenu) {
+            for item in menu.items {
+                all.append(item)
+                if let submenu = item.submenu { walk(submenu) }
+            }
+        }
+        walk(MainMenu.build())
+        func item(_ action: Selector, tag: Int = 0) throws -> NSMenuItem {
+            try XCTUnwrap(all.first { $0.action == action && $0.tag == tag }, "\(action)")
+        }
+        func shortcut(_ item: NSMenuItem) -> String { "\(item.keyEquivalentModifierMask.rawValue)-\(item.keyEquivalent)" }
+        XCTAssertEqual(shortcut(try item(#selector(ConnectionWindowController.clearScreenAndHistory(_:)))),
+                       "\(NSEvent.ModifierFlags.command.rawValue)-k")
+        XCTAssertEqual(shortcut(try item(#selector(ConnectionWindowController.duplicateConnection(_:)))),
+                       "\(NSEvent.ModifierFlags.command.rawValue)-d")
+        XCTAssertEqual(shortcut(try item(#selector(AppDelegate.showSettings(_:)))), "\(NSEvent.ModifierFlags.command.rawValue)-,")
+        let find: NSMenuItem = try item(#selector(NSResponder.performTextFinderAction(_:)),
+                                        tag: NSTextFinder.Action.showFindInterface.rawValue)
+        XCTAssertEqual(shortcut(find), "\(NSEvent.ModifierFlags.command.rawValue)-f")
+        XCTAssertEqual(try item(#selector(NSResponder.performTextFinderAction(_:)), tag: NSTextFinder.Action.nextMatch.rawValue)
+            .keyEquivalent, "g")
+        XCTAssertEqual(try item(#selector(ConnectionWindowController.copyEverything(_:))).keyEquivalent, "")
+        XCTAssertEqual(try item(#selector(ConnectionWindowController.changeTitle(_:))).title, "Titel ändern …")
     }
 }

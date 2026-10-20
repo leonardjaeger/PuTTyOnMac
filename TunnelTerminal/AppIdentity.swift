@@ -11,6 +11,9 @@ enum AppIdentity {
     /// Passwörter gespeicherter Sitzungen (M3, S1); Dienstname im Schlüsselbund hängt an der Bundle-ID.
     static let passwords: PasswordStore = PasswordStore(service: "\(logSubsystem).passwort")
 
+    /// Profile (M4), eine Liste für alle Fenster.
+    static let profiles: ProfileStore = ProfileStore()
+
     /// plink aus dem App-Paket (gebaut von Scripts/build-putty.sh, nie ein fremder Build).
     static var plinkPath: String {
         Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/plink").path

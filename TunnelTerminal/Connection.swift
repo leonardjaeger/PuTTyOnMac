@@ -46,6 +46,9 @@ final class Connection {
     private(set) var storedPasswordRejected: Bool = false
     /// Diese Verbindung übergibt ein gespeichertes Passwort an plink.
     private(set) var usesStoredPassword: Bool = false
+    /// Sitzungsprotokoll der App (M4), solange die Verbindung läuft; nur für gespeicherte Sitzungen mit `LogType`.
+    private(set) var log: SessionLogWriter?
+    private let logFolder: URL
 
     /// `puttyDirectory` nur für Tests ändern (eigener Ordner statt Application Support, RL 3.9).
     init(endpoint: Endpoint, connectionProtocol: ConnectionProtocol,
@@ -55,18 +58,22 @@ final class Connection {
         quickSession = try SessionFile.quickConnect(to: endpoint, using: connectionProtocol)
         sessionName = AppIdentity.quickSessionPrefix + UUID().uuidString
         passwords = nil
+        logFolder = SessionLogWriter.folder
     }
 
     /// `passwords`: `nil` verbindet ohne gespeichertes Passwort (plink fragt im Terminal).
+    /// `logFolder` nur für Tests ändern.
     init(savedSession name: String,
          puttyDirectory: @escaping @MainActor () throws -> PuTTYDirectory = AppIdentity.puttyDirectory,
-         passwords: PasswordStore? = AppIdentity.passwords) throws(InputError) {
+         passwords: PasswordStore? = AppIdentity.passwords,
+         logFolder: URL = SessionLogWriter.folder) throws(InputError) {
         try SessionName.check(name, reservedPrefix: AppIdentity.quickSessionPrefix)
         target = .saved(name)
         self.puttyDirectory = puttyDirectory
         quickSession = nil
         sessionName = name
         self.passwords = passwords
+        self.logFolder = logFolder
     }
 
     /// Dieselbe Verbindung noch einmal (neue Schnellsitzung bzw. dieselbe gespeicherte Sitzung).
@@ -76,7 +83,8 @@ final class Connection {
         case .quick(let endpoint, let connectionProtocol):
             try Connection(endpoint: endpoint, connectionProtocol: connectionProtocol, puttyDirectory: puttyDirectory)
         case .saved(let name):
-            try Connection(savedSession: name, puttyDirectory: puttyDirectory, passwords: withStoredPassword ? passwords : nil)
+            try Connection(savedSession: name, puttyDirectory: puttyDirectory, passwords: withStoredPassword ? passwords : nil,
+                           logFolder: logFolder)
         }
     }
 
@@ -110,10 +118,12 @@ final class Connection {
         do {
             directory = try puttyDirectory()
             if let quickSession { try directory.write(quickSession, sessionName: sessionName) }
-            secret = storedPassword(in: directory)
+            let saved: SessionFile? = quickSession == nil ? try? directory.read(sessionNamed: sessionName) : nil
+            secret = storedPassword(from: saved)
             command = try PlinkCommand(sessionName: sessionName, puttyDirectory: directory.url.path,
                                        parentEnvironment: ProcessInfo.processInfo.environment,
                                        passwordFromPipe: secret != nil)
+            if saved?.sessionLogEnabled == true { openLog() }
         } catch {
             throw TerminalProcess.Failure(message: "Sitzung konnte nicht vorbereitet werden: \(error.localizedDescription)")
         }
@@ -121,12 +131,19 @@ final class Connection {
         process.onOutput = { [weak self] bytes in
             guard let self else { return }
             if self.usesStoredPassword { self.rejectionWatch.scan(bytes) }
+            if let log = self.log, !log.write(bytes) {
+                self.log = nil   // Grenze erreicht: Datei schließen, Hinweis im Terminal, Statuszeile beim nächsten Verbinden
+                log.close()
+                self.note("Sitzungsprotokoll angehalten: 1 GiB erreicht.")
+            }
             self.onOutput?(bytes)
         }
         process.onExit = { [weak self] status in
             if let temporary { directory.removeSession(named: temporary) }
             AppLog.connection.info("Verbindung beendet, Status \(status, privacy: .public)")
             guard let self else { return }
+            self.log?.close()
+            self.log = nil
             self.storedPasswordRejected = self.rejectionWatch.found && !self.hungUpByUser && status != 0
             // Selbst getrennt: kein „Signal 1“ anzeigen
             if self.hungUpByUser {
@@ -143,16 +160,33 @@ final class Connection {
         } catch {
             if let temporary { directory.removeSession(named: temporary) }
             process.onExit = nil
+            log?.close()
+            log = nil
             throw error
         }
         AppLog.connection.info("Verbindung gestartet zu \(self.displayName, privacy: .private(mask: .hash))")
     }
 
+    /// Sitzungsprotokoll öffnen; scheitert es, sagt ein Hinweis im Terminal warum (die Verbindung läuft trotzdem).
+    private func openLog() {
+        do {
+            log = try SessionLogWriter(sessionName: sessionName, folder: logFolder)
+        } catch {
+            note("Sitzungsprotokoll nicht möglich: \(error.message)")
+        }
+    }
+
+    /// Hinweis der App im Terminal (gedimmt), nicht vom Server.
+    private func note(_ text: String) {
+        let line: String = "\u{1B}[2m[\(AppIdentity.name)] \(text)\u{1B}[0m\r\n"
+        onOutput?(ArraySlice(Array(line.utf8)))
+    }
+
     /// Passwort aus dem Schlüsselbund, nur wenn es zum aktuellen Ziel der Sitzung gehört (S1). Gehört es zu einem
     /// anderen Ziel, sagt ein Hinweis im Terminal, warum plink fragt.
-    private func storedPassword(in directory: PuTTYDirectory) -> Data? {
+    private func storedPassword(from file: SessionFile?) -> Data? {
         guard let passwords, case .saved(let name) = target,
-              let file = try? directory.read(sessionNamed: name), let passwordTarget = file.passwordTarget else { return nil }
+              let file, let passwordTarget = file.passwordTarget else { return nil }
         switch passwords.lookup(session: name, target: passwordTarget) {
         case .found(let data):
             // shortcut: Das Passwort liegt als unveränderliche CFData aus dem Schlüsselbund vor und lässt sich nicht
@@ -161,9 +195,8 @@ final class Connection {
             usesStoredPassword = true
             return data
         case .otherTarget:
-            let note: String = "\u{1B}[2m[\(AppIdentity.name)] Gespeichertes Passwort nicht verwendet: Es gehört zu einem "
-                + "anderen Benutzer, Server oder Port. In der Sitzung neu sichern.\u{1B}[0m\r\n"
-            onOutput?(ArraySlice(Array(note.utf8)))
+            note("Gespeichertes Passwort nicht verwendet: Es gehört zu einem anderen Benutzer, Server oder Port. "
+                 + "In der Sitzung neu sichern.")
             return nil
         case .none:
             return nil

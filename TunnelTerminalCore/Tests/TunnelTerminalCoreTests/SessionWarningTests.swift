@@ -93,9 +93,21 @@ struct SessionWarningTests {
         let found: [SessionWarning] = try warnings(
             "LogType=2\nLogFileName=/tmp/log\nPortForwardings=L8080=localhost:80\nAgentFwd=1\nRemoteCommand=rm -rf ~\n")
         #expect(found == [.remoteCommand("rm -rf ~"), .agentForwarding, .portForwardings("L8080=localhost:80"),
-                          .sessionLog("/tmp/log")])
+                          .sessionLog])
         #expect(found.allSatisfy { !$0.isDangerous })
         #expect(found.allSatisfy { !$0.message.isEmpty })
+    }
+
+    /// M4: LogType 1/2 schreibt die App selbst in ihren Ordner (plink protokolliert ohne Terminal nichts); 3/4 schreibt plink
+    /// als SSH-Paketprotokoll an `LogFileName` – mit allem Getippten, auch Passwörtern in der Shell. Zahlen wie plink (`atoi`).
+    @Test("Sitzungsprotokoll der App und Paketprotokoll von plink", arguments: [
+        ("LogType=1\n", [SessionWarning.sessionLog]), ("LogType=02\n", [.sessionLog]),
+        ("LogType=3\nLogFileName=/tmp/p.log\n", [.packetLog("/tmp/p.log")]), ("LogType=4\n", [.packetLog("putty.log")]),
+        ("LogType=0\n", []), ("LogType=7\n", [])
+    ])
+    func logWarnings(text: String, expected: [SessionWarning]) throws {
+        #expect(try warnings(text) == expected)
+        #expect(SessionWarning.packetLog("/tmp/p.log").message.contains("Eingaben"))
     }
 
     @Test("Eigene GSSAPI-Bibliothek: nur noch Hinweis – plink ist seit M3 ohne GSSAPI gebaut und lädt sie nicht")
@@ -111,8 +123,9 @@ struct SessionWarningTests {
     @Test("Vorauswahl beim Import: nicht bei Gefährlichem und nicht, wenn eine Datei auf dem Mac geschrieben wird")
     func preselection() {
         #expect(SessionWarning.localProxyCommand("x").blocksPreselection)
-        #expect(SessionWarning.sessionLog("x").blocksPreselection)
-        #expect(!SessionWarning.sessionLog("x").isDangerous)
+        #expect(SessionWarning.sessionLog.blocksPreselection)
+        #expect(!SessionWarning.sessionLog.isDangerous)
+        #expect(SessionWarning.packetLog("x").blocksPreselection)
         #expect(!SessionWarning.remoteCommand("x").blocksPreselection)
         #expect(!SessionWarning.agentForwarding.blocksPreselection)
     }

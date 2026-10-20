@@ -9,6 +9,7 @@ public enum InputField: String, Sendable {
     case keepalive = "Keepalive-Intervall"
     case comment = "Kommentar"
     case path = "Pfad"
+    case profileName = "Profilname"
 }
 
 /// Abgelehnte Eingabe. Die Regeln stehen in Plan Abschnitt 6 (S3: keine Optionen einschleusen, S4: Sitzungsdateien).
@@ -28,6 +29,7 @@ public enum InputError: Error, Equatable, Sendable {
     case notAPuTTYFolder
     case outOfRange(InputField)
     case nameTaken
+    case profileNameTaken
     case notAbsolute
 
     /// Meldung für die Oberfläche.
@@ -47,6 +49,7 @@ public enum InputError: Error, Equatable, Sendable {
         case .notAnExport: "Die Datei ist kein Registrierungs-Export oder zu groß."
         case .notAPuTTYFolder: "Der Ordner enthält keine PuTTY-Sitzungen (Unterordner „sessions“ fehlt)."
         case .nameTaken: "Eine Sitzung mit diesem Namen gibt es schon."
+        case .profileNameTaken: "Ein Profil mit diesem Namen gibt es schon."
         case .outOfRange(let field): "\(field.rawValue) liegt außerhalb des erlaubten Bereichs."
         case .notAbsolute: "Der Pfad muss vollständig sein (mit „/“ am Anfang)."
         }

@@ -8,8 +8,10 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Der Server kann die Schlüssel im ssh-agent dieses Macs benutzen.
     case agentForwarding
     case portForwardings(String)
-    /// PuTTY schreibt ein Sitzungsprotokoll in diese Datei.
-    case sessionLog(String)
+    /// Sitzungsprotokoll an (`LogType` 1/2): Die App speichert die Ausgabe in ihrem Protokollordner (M4).
+    case sessionLog
+    /// SSH-Paketprotokoll von plink (`LogType` 3/4) in diese Datei – enthält alles Getippte (M4).
+    case packetLog(String)
     /// Eigene GSSAPI-Bibliothek: andere PuTTY-Installationen laden sie (`dlopen`, unix/gss.c); das plink der App ist seit
     /// M3 ohne GSSAPI gebaut (docs/M3-Recherche.md 1) – deshalb nur ein Hinweis, keine Rückfrage mehr.
     case gssLibrary(String)
@@ -32,7 +34,7 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Beim Import nicht vorausgewählt: Gefährliches und alles, was eine Datei auf diesem Mac schreibt.
     public var blocksPreselection: Bool {
         switch self {
-        case .sessionLog, .manualHostKeys: true
+        case .sessionLog, .packetLog, .manualHostKeys: true
         default: isDangerous
         }
     }
@@ -43,7 +45,9 @@ public indirect enum SessionWarning: Equatable, Sendable {
         case .remoteCommand(let command): "Führt auf dem Server diesen Befehl aus: \(Self.visible(command))"
         case .agentForwarding: "Agent-Weiterleitung: Der Server kann die Schlüssel aus dem ssh-agent dieses Macs benutzen."
         case .portForwardings(let rules): "Port-Weiterleitungen: \(Self.visible(rules))"
-        case .sessionLog(let path): "Schreibt ein Sitzungsprotokoll nach: \(Self.visible(path))"
+        case .sessionLog: "Sitzungsprotokoll an: Die App speichert die Ausgabe des Servers in ihrem Protokollordner."
+        case .packetLog(let path): "plink schreibt ein SSH-Paketprotokoll mit allen Eingaben (auch in der Shell getippten "
+            + "Passwörtern) nach: \(Self.visible(path)). Abschalten: Sitzungsprotokoll im Editor ein- und wieder ausschalten."
         case .gssLibrary(let path): "Nennt eine eigene GSSAPI-Bibliothek (\(Self.visible(path))). Diese App lädt sie nicht, andere PuTTY-Installationen schon."
         case .manualHostKeys: "Legt den Hostschlüssel des Servers fest; plink fragt dann nicht mehr nach."
         case .proxySession(let name): "Verbindet über den SSH-Proxy „\(Self.visible(name))“ (gespeicherte Sitzung oder Server)."
@@ -102,7 +106,11 @@ extension SessionFile {
         if let command = value(forKey: "RemoteCommand"), !command.isEmpty { result.append(.remoteCommand(command)) }
         if integer(forKey: "AgentFwd") ?? 0 != 0 { result.append(.agentForwarding) }
         if let rules = value(forKey: "PortForwardings"), !rules.isEmpty { result.append(.portForwardings(rules)) }
-        if integer(forKey: "LogType") ?? 0 != 0 { result.append(.sessionLog(value(forKey: "LogFileName") ?? "putty.log")) }
+        switch integer(forKey: "LogType") ?? 0 {
+        case 1, 2: result.append(.sessionLog)
+        case 3, 4: result.append(.packetLog(value(forKey: "LogFileName") ?? "putty.log"))
+        default: break
+        }
         if let library = value(forKey: "GSSCustom"), !library.isEmpty { result.append(.gssLibrary(library)) }
         if let proxy = sshProxyHost { result.append(.proxySession(proxy)) }
         if let keys = value(forKey: "SSHManualHostKeys"), !keys.isEmpty { result.append(.manualHostKeys) }

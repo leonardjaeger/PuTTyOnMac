@@ -1,10 +1,11 @@
 import SwiftUI
 import TunnelTerminalCore
 
-/// Inspektor rechts im Hauptfenster (Plan 3.1): Abschnitte „Verbindung“ (M2) und „Hostschlüssel“ (M3, nur SSH);
+/// Inspektor rechts im Hauptfenster (Plan 3.1): Abschnitte „Verbindung“ (M2, Profil seit M4) und „Hostschlüssel“ (M3, nur SSH);
 /// weitere kommen mit ihren Funktionen (Tunnel M5, Dateien M6), nie als Platzhalter.
 struct ConnectionInspector: View {
-    let info: ConnectionInfo
+    @Bindable var info: ConnectionInfo
+    let profiles: ProfileStore
 
     var body: some View {
         if let summary = info.summary {
@@ -28,12 +29,19 @@ struct ConnectionInspector: View {
                     LabeledContent("Verbindungsart", value: summary.protocolTitle)
                     let fromKeychain: Bool = info.hasStoredPassword && summary.endsWithPassword
                     LabeledContent("Anmeldung", value: summary.authentication + (fromKeychain ? " aus dem Schlüsselbund" : ""))
+                    Picker("Profil", selection: $info.profileID) {
+                        ForEach(profiles.profiles) { profile in
+                            Text(SessionWarning.visible(profile.name)).tag(profile.id)
+                        }
+                    }
+                    .help("Gilt für diesen Tab; dauerhaft im Sitzungs-Editor")
                 }
                 if info.showsHostKeys {
                     HostKeyInspectorSection(info: info)
                 }
             }
             .formStyle(.grouped)
+            .onChange(of: info.profileID) { _, id in info.selectProfile?(id) }
         } else {
             ContentUnavailableView("Keine Verbindung", systemImage: "bolt.horizontal.circle",
                                    description: Text("Hier stehen die Angaben zur Verbindung dieses Tabs."))

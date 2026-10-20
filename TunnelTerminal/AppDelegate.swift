@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Fenster „Schlüssel“ und „Bekannte Hostschlüssel“, je eines für die App (M3).
     private var keysWindow: ToolWindowController?
     private var knownHostsWindow: ToolWindowController?
+    private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
@@ -74,6 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keysWindow = controller
         }
         keysWindow?.showWindow(nil)
+    }
+
+    /// Einstellungen (⌘,), ein Fenster für die App.
+    @objc func showSettings(_ sender: Any?) {
+        if settingsWindow == nil { settingsWindow = SettingsWindowController(profiles: AppIdentity.profiles) }
+        settingsWindow?.showWindow(nil)
     }
 
     /// Fenster „Bekannte Hostschlüssel“; liest die Liste neu, sobald es nach vorne kommt.

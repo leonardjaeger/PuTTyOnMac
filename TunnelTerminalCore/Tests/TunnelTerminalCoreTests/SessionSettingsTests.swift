@@ -60,7 +60,7 @@ struct SessionSettingsTests {
         let file: SessionFile = try SessionFile(contents: Self.realistic)
         #expect(file.hostName == "server.example")
         #expect(file.userName == "test")
-        #expect(file.otherEntryCount == 16)
+        #expect(file.otherEntryCount == 15)   // LogType bearbeitet der Editor seit M4 (Sitzungsprotokoll)
     }
 
     @Test("Bearbeiten ändert nur die bearbeiteten Zeilen; alles andere bleibt byte-gleich")
@@ -171,5 +171,38 @@ struct SessionSettingsTests {
         var telnet: SessionFile = try SessionFile(contents: Data("Protocol=telnet\n".utf8))
         try telnet.setPortNumber(2323)
         #expect(telnet.value(forKey: "Protocol") == "telnet")
+    }
+}
+
+/// M4: Profil und Sitzungsprotokoll je Sitzung.
+@Suite("Sitzungseinstellungen M4")
+struct SessionTerminalSettingsTests {
+    @Test("Profil-Kennung: lesen, setzen, entfernen; Unsinn zählt als kein Profil")
+    func profile() throws {
+        var file: SessionFile = SessionFile()
+        #expect(file.profileID == nil)
+        let id: UUID = UUID()
+        try file.setProfileID(id)
+        #expect(file.profileID == id)
+        #expect(file.value(forKey: "TunnelTerminalProfile") == id.uuidString)
+        try file.setProfileID(nil)
+        #expect(file.value(forKey: "TunnelTerminalProfile") == nil)
+        try file.setValue("kein-uuid", forKey: "TunnelTerminalProfile")
+        #expect(file.profileID == nil)
+    }
+
+    /// LogType wie PuTTY (putty.h): 1 druckbare, 2 alle Ausgaben – beides schreibt die App selbst, weil plink ohne
+    /// Terminal nichts protokolliert (Machbarkeit M4). 3/4 sind SSH-Paketprotokolle von plink, keine Sitzungsprotokolle.
+    @Test("Sitzungsprotokoll: an bei LogType 1 und 2, Schalter setzt 2 bzw. 0", arguments: [
+        ("0", false), ("1", true), ("2", true), ("02", true), ("3", false), ("4", false), ("x", false)
+    ])
+    func sessionLog(logType: String, enabled: Bool) throws {
+        var file: SessionFile = SessionFile()
+        try file.setValue(logType, forKey: "LogType")
+        #expect(file.sessionLogEnabled == enabled)
+        file.setSessionLog(true)
+        #expect(file.value(forKey: "LogType") == "2")
+        file.setSessionLog(false)
+        #expect(file.value(forKey: "LogType") == "0")
     }
 }

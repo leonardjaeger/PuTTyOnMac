@@ -24,6 +24,8 @@ struct SessionEditor: View {
     @State private var tcpKeepalives: Bool
     @State private var compression: Bool
     @State private var agentForwarding: Bool
+    @State private var profileID: UUID
+    @State private var sessionLog: Bool
     @State private var errors: [Field: String] = [:]
     @FocusState private var focus: Field?
 
@@ -43,6 +45,8 @@ struct SessionEditor: View {
         _tcpKeepalives = State(initialValue: file.tcpKeepalives)
         _compression = State(initialValue: file.compression)
         _agentForwarding = State(initialValue: file.agentForwarding)
+        _profileID = State(initialValue: model.profiles.profile(id: file.profileID).id)
+        _sessionLog = State(initialValue: file.sessionLogEnabled)
     }
 
     private var isDefaultSettings: Bool { name == SessionName.defaultSettings }
@@ -87,10 +91,26 @@ struct SessionEditor: View {
                     .focused($focus, equals: .user)
                 ErrorText(errors[.user])
             }
-            Section("Terminal") {
+            Section {
                 TextField("Terminaltyp", text: $terminalType)
                     .focused($focus, equals: .terminalType)
                 ErrorText(errors[.terminalType])
+                Picker("Profil", selection: $profileID) {
+                    ForEach(model.profiles.profiles) { profile in
+                        Text(SessionWarning.visible(profile.name)).tag(profile.id)
+                    }
+                }
+                Toggle("Sitzungsprotokoll", isOn: $sessionLog)
+            } header: {
+                Text("Terminal")
+            } footer: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Das Protokoll enthält alles, was im Terminal erscheint – auch getippte Befehle, nicht aber verdeckte "
+                         + "Eingaben wie Passwörter.")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Protokolle zeigen", action: revealLogs)
+                }
             }
             Section("Verbindung") {
                 TextField("Keepalive alle (Sekunden)", text: $keepalive, prompt: Text("0 = aus"))
@@ -139,11 +159,23 @@ struct SessionEditor: View {
         .onChange(of: tcpKeepalives) { update(nil) { $0.setFlag(tcpKeepalives, for: .tcpKeepalives) } }
         .onChange(of: compression) { update(nil) { $0.setFlag(compression, for: .compression) } }
         .onChange(of: agentForwarding) { update(nil) { $0.setFlag(agentForwarding, for: .agentForwarding) } }
+        .onChange(of: profileID) {
+            update(nil) { try $0.setProfileID(profileID == TerminalProfile.standardID ? nil : profileID) }
+        }
+        .onChange(of: sessionLog) { update(nil) { $0.setSessionLog(sessionLog) } }
         // „Fertig“/Esc schließt das Sheet, ohne dass ein Namensfeld verlassen wurde: Namen trotzdem übernehmen.
         // Nach einem Umbenennen baut sich der Editor neu auf; der alte Name existiert dann nicht mehr.
         .onDisappear {
             if model.library.names.contains(name) { applyName(reportingFailure: true) }
         }
+    }
+
+    /// Ordner der Sitzungsprotokolle im Finder (wird angelegt, falls es ihn noch nicht gibt).
+    private func revealLogs() {
+        let folder: URL = SessionLogWriter.folder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        NSWorkspace.shared.activateFileViewerSelecting([folder])
     }
 
     private var otherValuesText: String {

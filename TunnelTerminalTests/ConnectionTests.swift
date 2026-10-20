@@ -28,25 +28,6 @@ final class ConnectionTests: XCTestCase {
         XCTAssertTrue(String(decoding: bytes, as: UTF8.self).contains("Release 0.85"))
     }
 
-    /// Lokaler Socket auf einem freien Port; ohne `listen` weist der Port Verbindungen ab, sobald er zu ist.
-    private func localSocket(listening: Bool) throws -> (descriptor: Int32, port: Int) {
-        let socketDescriptor: Int32 = socket(AF_INET, SOCK_STREAM, 0)
-        XCTAssertGreaterThanOrEqual(socketDescriptor, 0)
-        var address: sockaddr_in = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-        var length: socklen_t = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let bound: Int32 = withUnsafeMutablePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(socketDescriptor, $0, length) }
-        }
-        XCTAssertEqual(bound, 0)
-        if listening { XCTAssertEqual(listen(socketDescriptor, 1), 0) }
-        _ = withUnsafeMutablePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(socketDescriptor, $0, &length) }
-        }
-        return (socketDescriptor, Int(UInt16(bigEndian: address.sin_port)))
-    }
-
     func testRefusedConnectionEndsAndRemovesSession() throws {
         let probe: (descriptor: Int32, port: Int) = try localSocket(listening: false)
         close(probe.descriptor)   // jetzt lauscht dort sicher niemand

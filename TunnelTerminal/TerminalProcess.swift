@@ -177,7 +177,7 @@ final class TerminalProcess {
         let reader: DispatchSourceRead = DispatchSource.makeReadSource(fileDescriptor: master, queue: .main)
         let descriptor: Int32 = master
         reader.setEventHandler { [self] in
-            MainActor.assumeIsolated { _ = self.readOnce() }
+            MainActor.assumeIsolated { self.readAvailable() }
         }
         reader.setCancelHandler { close(descriptor) }
         readSource = reader
@@ -192,6 +192,16 @@ final class TerminalProcess {
         exitSource = exitWatcher
         exitWatcher.resume()
     }
+
+    /// Liest, was da ist, höchstens `readBudget` lang (M4, Tempo bei viel Ausgabe): Ein PTY liefert nur wenige KB je
+    /// Lesen; ein Block je Ereignis hieße zwischen zwei Blöcken jedes Mal ein Durchlauf der Hauptschleife samt Zeichnen.
+    private func readAvailable() {
+        let start: UInt64 = DispatchTime.now().uptimeNanoseconds
+        while readOnce(), DispatchTime.now().uptimeNanoseconds - start < Self.readBudget {}
+    }
+
+    /// Zeit je Leseereignis (8 ms): danach kommen Tastatur und Zeichnen dran.
+    private static let readBudget: UInt64 = 8_000_000
 
     /// Liest einen Block Ausgabe; `false`, wenn gerade nichts da ist oder das Terminal zu ist.
     private func readOnce() -> Bool {

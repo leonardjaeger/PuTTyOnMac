@@ -25,6 +25,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     let sessions: SessionsModel
     let quick: QuickConnect
     private let connected: ConnectedSessions
+    private let profiles: ProfileStore
     private let info: ConnectionInfo = ConnectionInfo()
     private let split: NSSplitViewController = NSSplitViewController()
     private let sidebarItem: NSSplitViewItem
@@ -32,7 +33,16 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     private let area: TerminalArea = TerminalArea()
 
     private var connection: Connection?
-    private var terminal: TerminalView?
+    private(set) var terminal: AppTerminalView?
+    /// Eigener Titel des Tabs („Titel ändern …“, M4); `nil` = Adresse bzw. Sitzungsname.
+    private var customTitle: String?
+    /// Text, der auf die Bestätigung in der Hinweisleiste wartet (S10).
+    private var pendingPaste: String?
+    /// Tasten vor SwiftTerm: Hinweisleiste (Esc, ⌘↩) und F1–F4 (`AppTerminalView.handleKey`).
+    private var keyMonitor: Any?
+    /// OSC 52 einmal abgelehnt: weitere Wünsche dieser Verbindung ohne Rückfrage verwerfen (sonst sperrt ein Server
+    /// den Tab mit endlosen Rückfragen, Prüfer-Befund 3).
+    private var clipboardRefused: Bool = false
     /// Gespeicherte Sitzung, die für den Status in der Seitenleiste als verbunden zählt.
     private var countedSession: String?
     private var closingConfirmed: Bool = false
@@ -52,11 +62,13 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         connection?.quickAddress
     }
 
-    init(library: SessionLibrary, connected: ConnectedSessions, address: String = "",
-         connectionProtocol: ConnectionProtocol = .ssh, showsSidebar: Bool = true, showsInspector: Bool = true) {
-        sessions = SessionsModel(library: library)
+    init(library: SessionLibrary, connected: ConnectedSessions, profiles: ProfileStore = AppIdentity.profiles,
+         address: String = "", connectionProtocol: ConnectionProtocol = .ssh, showsSidebar: Bool = true,
+         showsInspector: Bool = true) {
+        sessions = SessionsModel(library: library, profiles: profiles)
         quick = QuickConnect(address: address, connectionProtocol: connectionProtocol)
         self.connected = connected
+        self.profiles = profiles
 
         let sidebar: NSHostingController<SessionSidebar> = NSHostingController(
             rootView: SessionSidebar(model: sessions, quick: quick, connected: connected))
@@ -69,7 +81,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         let content: NSSplitViewItem = NSSplitViewItem(viewController: area)
         content.minimumThickness = 360
 
-        let inspector: NSHostingController<ConnectionInspector> = NSHostingController(rootView: ConnectionInspector(info: info))
+        let inspector: NSHostingController<ConnectionInspector> = NSHostingController(
+            rootView: ConnectionInspector(info: info, profiles: profiles))
         inspector.sizingOptions = []
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
@@ -106,6 +119,9 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         }
         sessions.revealSidebar = { [weak self] in self?.sidebarItem.isCollapsed = false }
         quick.connect = { [weak self] text, choice in self?.connectQuick(text, using: choice) }
+        info.selectProfile = { [weak self] _ in self?.applyProfile() }
+        NotificationCenter.default.addObserver(self, selector: #selector(profilesChanged(_:)),
+                                               name: ProfileStore.didChange, object: profiles)
 
         let start: NSHostingView<StartView> = NSHostingView(rootView: StartView(model: sessions))
         start.sizingOptions = []
@@ -194,10 +210,15 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     /// Titel und Inspektor zeigen die Verbindung, auch bevor sie läuft.
     private func prepare(_ newConnection: Connection) {
+        // Dieselbe Verbindung noch einmal (⌘R): die Profil-Wahl im Inspektor bleibt für den Tab
+        let sameTarget: Bool = connection?.target == newConnection.target
         connection = newConnection
-        window?.title = SessionWarning.visible(newConnection.displayName)
+        clipboardRefused = false
+        window?.title = defaultTitle
         let settings: SessionFile? = newConnection.settings()
         info.summary = settings.map(ConnectionSummary.init(file:))
+        if !sameTarget { info.profileID = profiles.profile(id: settings?.profileID).id }
+        applyProfile()
         info.hasStoredPassword = newConnection.hasStoredPassword
         hostKeyServer = settings?.hostKeyServer
         refreshHostKeys()
@@ -216,18 +237,41 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     }
 
     private func outputArrived() {
+        if info.isConnecting { info.isConnecting = false }
+        if info.isLogging, connection?.log == nil { info.isLogging = false }   // Protokoll an der Grenze angehalten
         if hostKeyServer != nil, info.hostKeys.isEmpty, Date.now.timeIntervalSince(lastHostKeyCheck) >= 1 { refreshHostKeys() }
     }
 
     private func showTerminal() {
         guard terminal == nil else { return }
-        let view: TerminalView = TerminalView(frame: area.view.bounds)
+        let view: AppTerminalView = AppTerminalView(frame: area.view.bounds)
         view.terminalDelegate = self
         view.setAccessibilityLabel("Terminal")
+        view.onPaste = { [weak self] text in self?.requestPaste(text) }
+        view.onPasteDecision = { [weak self] insert in self?.finishPaste(insert) }
+        view.onFunctionKey = { [weak self] number in self?.functionKey(number) }
+        view.apply(profiles.profile(id: info.profileID))
         area.show(view)
+        let status: NSHostingView<StatusBar> = NSHostingView(rootView: StatusBar(info: info))
+        status.sizingOptions = [.intrinsicContentSize]
+        area.showStatus(status)
         window?.makeFirstResponder(view)
         window?.layoutIfNeeded()
         terminal = view
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak view] event in
+            view?.handleKey(event) == true ? nil : event
+        }
+    }
+
+    /// Profil des Tabs auf das Terminal übertragen (beim Verbinden, nach Wahl im Inspektor, nach Änderungen).
+    private func applyProfile() {
+        terminal?.apply(profiles.profile(id: info.profileID))
+    }
+
+    @objc private func profilesChanged(_ notification: Notification) {
+        // ein gelöschtes Profil: zurück auf das Standardprofil
+        info.profileID = profiles.profile(id: info.profileID).id
+        applyProfile()
     }
 
     private func start(_ newConnection: Connection) {
@@ -248,8 +292,12 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
             return
         }
         info.isRunning = true
+        info.isConnecting = true
         info.endMessage = nil
         info.hasStoredPassword = newConnection.usesStoredPassword
+        info.isLogging = newConnection.log != nil
+        info.columns = size.cols
+        info.rows = size.rows
         if case .saved(let name) = newConnection.target {
             connected.started(name)
             countedSession = name
@@ -258,7 +306,10 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     private func connectionEnded(_ message: String) {
         releaseCountedSession()
+        finishPaste(false)
         info.isRunning = false
+        info.isConnecting = false
+        info.isLogging = false
         info.endMessage = message
         refreshHostKeys()
         showBanner(message)
@@ -308,6 +359,126 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     @objc func focusQuickConnect(_ sender: Any?) {
         sidebarItem.isCollapsed = false
         quick.requestFocus()
+    }
+
+    // MARK: - Menübefehle: Terminal (M4)
+
+    /// ⌘K wie Terminal.app: Bildschirm und Verlauf leeren (nur in der App; der Server merkt davon nichts).
+    @objc func clearScreenAndHistory(_ sender: Any?) {
+        terminal?.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J")
+    }
+
+    /// Bearbeiten › Alles kopieren: Verlauf und Bildschirm als Text (wie „Copy All to Clipboard“ in PuTTY).
+    @objc func copyEverything(_ sender: Any?) {
+        guard let terminal else { return }
+        let text: String = Self.trimmed(String(decoding: terminal.getBufferAsData(kind: .active), as: UTF8.self))
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Leerraum am Zeilenende und leere Zeilen am Schluss weg (das Terminal füllt Zeilen bis zur Breite auf).
+    static func trimmed(_ buffer: String) -> String {
+        var lines: [String] = buffer.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            var text: String = String(line)
+            while text.last == " " { text.removeLast() }
+            return text
+        }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
+    /// ⌘D: dieselbe Verbindung in einem neuen Tab (Idee F3 aus dem Fork).
+    @objc func duplicateConnection(_ sender: Any?) {
+        guard let connection else { return }
+        do {
+            onOpenInNewTab?(.connection(try connection.again()), self)
+        } catch {
+            sessions.report(error)
+        }
+    }
+
+    /// Fenster › Titel ändern … (Idee F4 aus dem Fork); leer = wieder Adresse bzw. Sitzungsname.
+    @objc func changeTitle(_ sender: Any?) {
+        guard let window, window.attachedSheet == nil else { return }
+        let alert: NSAlert = NSAlert()
+        alert.messageText = "Titel ändern"
+        alert.informativeText = "Leer lassen, um wieder den Namen der Verbindung zu zeigen."
+        let field: NSTextField = NSTextField(string: customTitle ?? "")
+        field.placeholderString = window.title
+        field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+        field.setAccessibilityLabel("Titel")
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Ändern")
+        alert.addButton(withTitle: "Abbrechen")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.setCustomTitle(field.stringValue)
+        }
+    }
+
+    func setCustomTitle(_ text: String) {
+        let trimmed: String = text.trimmingCharacters(in: .whitespaces)
+        customTitle = trimmed.isEmpty ? nil : String(SessionWarning.visible(trimmed).prefix(100))
+        window?.title = defaultTitle
+    }
+
+    /// Eigener Titel, sonst Adresse bzw. Sitzungsname.
+    private var defaultTitle: String {
+        customTitle ?? connection.map { SessionWarning.visible($0.displayName) } ?? "Neue Verbindung"
+    }
+
+    /// Suchen (⌘F, ⌘G …) auch, wenn gerade die Seitenleiste den Fokus hat: weiter an das Terminal.
+    override func performTextFinderAction(_ sender: Any?) {
+        guard let terminal else { return }
+        window?.makeFirstResponder(terminal)
+        terminal.performTextFinderAction(sender)
+    }
+
+    private func functionKey(_ number: Int) {
+        switch number {
+        case 1: clearScreenAndHistory(nil)
+        case 2: copyEverything(nil)
+        case 3: duplicateConnection(nil)
+        case 4: changeTitle(nil)
+        default: break
+        }
+    }
+
+    // MARK: - Einfügen mit Rückfrage (S10)
+
+    /// Ohne Zeilenumbruch sofort; sonst erst nach Bestätigung in der Hinweisleiste. SwiftTerm schickt eingefügten Text
+    /// als Bracketed Paste, wenn das Programm es eingeschaltet hat, und ersetzt Steuerzeichen (z. B. ESC) durch Leerzeichen.
+    func requestPaste(_ text: String) {
+        guard let terminal, isConnected, pendingPaste == nil, !text.isEmpty else { return }
+        let lines: Int = PasteCheck.linesNeedingConfirmation(in: text)
+        guard lines > 0 else {
+            terminal.pasteText(text)
+            return
+        }
+        pendingPaste = text
+        terminal.isPastePending = true
+        let banner: PasteBanner = PasteBanner(lines: lines) { [weak self] insert in self?.finishPaste(insert) }
+        let view: NSHostingView<PasteBanner> = NSHostingView(rootView: banner)
+        view.sizingOptions = [.intrinsicContentSize]
+        area.showBanner(view)
+        window?.makeFirstResponder(terminal)   // Esc und ⌘↩ wirken nur im Terminal (z. B. nach Rechtsklick aus einem Feld)
+        NSAccessibility.post(element: window as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: banner.message + " Escape bricht ab, Befehl-Return fügt ein.",
+                                        .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
+    var isPastePending: Bool { pendingPaste != nil }
+
+    func finishPaste(_ insert: Bool) {
+        guard let text = pendingPaste else { return }
+        pendingPaste = nil
+        terminal?.isPastePending = false
+        area.showBanner(nil)
+        if let terminal {
+            window?.makeFirstResponder(terminal)
+            if insert && isConnected { terminal.pasteText(text) }
+        }
     }
 
     // MARK: - Menübefehle: Sitzungen
@@ -418,6 +589,9 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         case #selector(editSession(_:)): sessions.selection.count == 1
         case #selector(connectSessions(_:)): !sessions.connectableSelection.isEmpty
         case #selector(exportRegistry(_:)), #selector(exportFolder(_:)): !sessions.library.names.isEmpty
+        case #selector(clearScreenAndHistory(_:)), #selector(copyEverything(_:)),
+             #selector(performTextFinderAction(_:)): terminal != nil
+        case #selector(duplicateConnection(_:)): connection != nil
         default: true
         }
     }
@@ -466,6 +640,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     }
 
     func windowWillClose(_ notification: Notification) {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         connection?.hangUp()
         releaseCountedSession()
         onClose?(self)
@@ -479,6 +655,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         connection?.resize(columns: newCols, rows: newRows)
+        info.columns = newCols
+        info.rows = newRows
     }
 
     /// Titel vom Server werden nicht übernommen: Der Fenstertitel ist die Adresse bzw. der Sitzungsname (Plan M1/M2).
@@ -487,10 +665,65 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     func scrolled(source: TerminalView, position: Double) {}
     func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 
-    /// OSC 52 und Links aus der Ausgabe werden abgelehnt (S11; Rückfrage folgt in M4).
-    func clipboardCopy(source: TerminalView, content: Data) {}
+    /// OSC 52: Der Server will Text in die Zwischenablage legen – nur nach Rückfrage mit Vorschau (S11). Läuft schon eine
+    /// Rückfrage, wird die Anfrage verworfen (ein Server kann sie in Schleife schicken).
+    func clipboardCopy(source: TerminalView, content: Data) {
+        guard let window, window.attachedSheet == nil, !clipboardRefused, content.count <= Self.clipboardLimit,
+              let text = String(data: content, encoding: .utf8), !text.isEmpty else { return }
+        let alert: NSAlert = NSAlert()
+        alert.messageText = "Der Server möchte Text in die Zwischenablage legen."
+        alert.informativeText = "\(text.count) Zeichen:\n\n" + Self.preview(text)
+        alert.addButton(withTitle: "Nicht erlauben")
+        alert.addButton(withTitle: "In die Zwischenablage")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertSecondButtonReturn else {
+                self?.clipboardRefused = true
+                return
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+    }
+
+    /// Lesen der Zwischenablage (OSC 52) bleibt verboten: Die Frage käme mitten aus der Ausgabe, eine Antwort ginge
+    /// an den Server (S11).
     func clipboardRead(source: TerminalView) -> Data? { nil }
-    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
+
+    /// Links (OSC 8 oder erkannte Adressen, ⌘-Klick): nur http, https und mailto, immer mit Rückfrage und voller
+    /// Adresse (S11).
+    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        guard let window, window.attachedSheet == nil else { return }
+        let alert: NSAlert = NSAlert()
+        guard let url = LinkPolicy.openableURL(link) else {
+            alert.messageText = "Dieser Link wird nicht geöffnet."
+            alert.informativeText = "Aus dem Terminal öffnet \(AppIdentity.name) nur Web- und E-Mail-Adressen "
+                + "(http, https, mailto):\n\n" + Self.preview(link)
+            alert.beginSheetModal(for: window)
+            return
+        }
+        alert.messageText = "Link aus dem Terminal öffnen?"
+        // Ziel eigens nennen: in „https://bank.example@boese.test“ ist boese.test das Ziel (Prüfer-Befund 10)
+        let target: String = url.host.map { "Ziel: \(SessionWarning.visible($0))\n\n" } ?? ""
+        alert.informativeText = target + SessionWarning.visible(url.absoluteString) + "\n\nDer Link kommt vom Server bzw. "
+            + "aus der Ausgabe eines Programms."
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Öffnen")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertSecondButtonReturn { NSWorkspace.shared.open(url) }
+        }
+    }
+
+    /// Größte Datenmenge, die ein Server per OSC 52 in die Zwischenablage legen darf (1 MiB).
+    static let clipboardLimit: Int = 1 << 20
+
+    /// Kurze, sichtbare Vorschau: höchstens 10 Zeilen und 400 Zeichen, Steuerzeichen als `\u{…}`.
+    static func preview(_ text: String) -> String {
+        let all: [Substring] = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let shown: String = all.prefix(10).map { SessionWarning.visible(String($0)) }.joined(separator: "\n")
+        let short: String = String(shown.prefix(400))
+        return all.count > 10 || short.count < shown.count ? short + " …" : short
+    }
+
 }
 
 private extension Error {

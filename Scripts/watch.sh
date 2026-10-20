@@ -48,7 +48,7 @@ while true; do
     {
       echo "Auftrag $name · Modus $mode · $(date '+%d.%m.%Y %H:%M:%S') · Zeitlimit $(limit_for "$mode") s"
       echo "SHA-256 der Skripte:"
-      shasum -a 256 Scripts/*.sh build/skript.sh build/m1/*.sh build/u1/*.sh 2>/dev/null
+      shasum -a 256 Scripts/*.sh build/skript.sh build/m*/*.sh build/u1/*.sh 2>/dev/null
       if [ "$mode" = skript ]; then echo "--- build/skript.sh ---"; cat build/skript.sh; fi
       echo "---"
     } > "$log"

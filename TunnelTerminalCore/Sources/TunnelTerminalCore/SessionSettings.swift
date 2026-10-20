@@ -1,3 +1,5 @@
+import Foundation
+
 /// Die Einstellungen, die der Sitzungs-Editor anbietet (Plan M2: nur häufig genutzte Felder).
 /// Fehlende Werte gelten mit PuTTYs eingebauten Vorgaben (`settings.c`, `load_open_settings`).
 /// Setzen ändert nur die betroffene Zeile; alle anderen bleiben byte-gleich.
@@ -12,8 +14,27 @@ extension SessionFile {
     /// Schlüssel, die der Editor bearbeitet.
     public static let editedKeys: Set<String> = [
         "HostName", "PortNumber", "Protocol", "UserName", "TerminalType", "PingInterval", "PingIntervalSecs",
-        "TCPKeepalives", "Compression", "AgentFwd", "RemoteCommand", "PublicKeyFile"
+        "TCPKeepalives", "Compression", "AgentFwd", "RemoteCommand", "PublicKeyFile", profileKey, "LogType"
     ]
+
+    /// Eigener Schlüssel der App für das Profil (M4); PuTTY übergeht unbekannte Schlüssel.
+    public static let profileKey: String = "TunnelTerminalProfile"
+
+    /// Profil der Sitzung; `nil` ohne oder mit unlesbarem Eintrag (dann gilt das Standardprofil).
+    public var profileID: UUID? { value(forKey: Self.profileKey).flatMap(UUID.init(uuidString:)) }
+
+    /// `nil` entfernt den Eintrag (Standardprofil).
+    public mutating func setProfileID(_ id: UUID?) throws(InputError) {
+        if let id { try setValue(id.uuidString, forKey: Self.profileKey) } else { removeValue(forKey: Self.profileKey) }
+    }
+
+    /// Sitzungsprotokoll an: `LogType` 1 (druckbare) oder 2 (alle Ausgaben, putty.h). Die App schreibt es selbst – plink
+    /// hat kein Terminal und protokolliert dabei nichts (Machbarkeit M4). 3 und 4 sind SSH-Paketprotokolle von plink.
+    public var sessionLogEnabled: Bool { [1, 2].contains(integer(forKey: "LogType") ?? 0) }
+
+    public mutating func setSessionLog(_ isOn: Bool) {
+        try? setValue(isOn ? "2" : "0", forKey: "LogType")
+    }
 
     public var hostName: String { value(forKey: "HostName") ?? "" }
     /// Port wie plink: `PortNumber` gilt nur, wenn `Protocol` ein Verfahren von plink nennt; sonst SSH auf 22

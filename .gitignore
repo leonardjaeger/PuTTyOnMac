@@ -30,6 +30,13 @@ build/m2/*
 !build/m3/
 build/m3/*
 !build/m3/*.sh
+# M4: Hilfsskripte (Machbarkeit, Oberflächenprüfung); schritt.txt bleibt lokal
+!build/m4/
+build/m4/*
+!build/m4/*.sh
+!build/m4/*.py
+!build/m4/bench/
+build/m4/bench/.build/
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

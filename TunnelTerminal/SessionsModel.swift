@@ -18,6 +18,8 @@ final class SessionsModel {
     }
 
     let library: SessionLibrary
+    /// Profile für die Auswahl im Editor (M4).
+    let profiles: ProfileStore
     var selection: Set<String> = []
     var search: String = ""
     var importPreview: ImportPreview?
@@ -40,7 +42,8 @@ final class SessionsModel {
     /// Öffnet die Dateiauswahl für den Import.
     @ObservationIgnored var onImport: (ImportSource) -> Void = { _ in }
 
-    init(library: SessionLibrary) {
+    init(library: SessionLibrary, profiles: ProfileStore = AppIdentity.profiles) {
+        self.profiles = profiles
         self.library = library
     }
 
