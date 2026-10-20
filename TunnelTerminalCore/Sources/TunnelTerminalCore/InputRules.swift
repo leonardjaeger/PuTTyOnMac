@@ -10,6 +10,7 @@ public enum InputField: String, Sendable {
     case comment = "Kommentar"
     case path = "Pfad"
     case profileName = "Profilname"
+    case remotePath = "Pfad auf dem Server"
 }
 
 /// Abgelehnte Eingabe. Die Regeln stehen in Plan Abschnitt 6 (S3: keine Optionen einschleusen, S4: Sitzungsdateien).
@@ -33,6 +34,9 @@ public enum InputError: Error, Equatable, Sendable {
     case notAbsolute
     case proxyLoop
     case forwardingTaken
+    case notAFile
+    case backslashInName
+    case singleCharacterHost
 
     /// Meldung für die Oberfläche.
     public var message: String {
@@ -55,6 +59,10 @@ public enum InputError: Error, Equatable, Sendable {
         case .outOfRange(let field): "\(field.rawValue) liegt außerhalb des erlaubten Bereichs."
         case .notAbsolute: "Der Pfad muss vollständig sein (mit „/“ am Anfang)."
         case .forwardingTaken: "Für diesen Port gibt es schon eine Weiterleitung."
+        case .notAFile: "Der Pfad nennt keine Datei (z. B. /var/log/syslog)."
+        case .backslashInName: "pscp lädt Dateien mit „\\“ im Namen unter einem anderen Namen hoch – bitte die Datei umbenennen."
+        case .singleCharacterHost: "pscp hält einen Server mit nur einem Zeichen im Namen für ein Laufwerk – bitte in der Sitzung "
+            + "den vollständigen Namen oder die Adresse eintragen."
         case .proxyLoop: "Die SSH-Proxy-Sitzungen verweisen im Kreis aufeinander – plink würde endlos weiterverbinden."
         }
     }

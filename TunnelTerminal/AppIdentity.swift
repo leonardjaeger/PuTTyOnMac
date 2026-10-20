@@ -19,6 +19,11 @@ enum AppIdentity {
         Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/plink").path
     }
 
+    /// pscp aus dem App-Paket für die Dateiübertragung (M6).
+    static var pscpPath: String {
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/pscp").path
+    }
+
     /// Eigener PuTTY-Ordner, damit nichts mit einer Homebrew-PuTTY in ~/.putty kollidiert (Plan Abschnitt 3).
     static func puttyDirectory() throws -> PuTTYDirectory {
         let support: URL = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,

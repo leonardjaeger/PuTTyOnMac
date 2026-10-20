@@ -2,10 +2,11 @@ import SwiftUI
 import TunnelTerminalCore
 
 /// Inspektor rechts im Hauptfenster (Plan 3.1): Abschnitte „Verbindung“ (M2, Profil seit M4) und „Hostschlüssel“ (M3, nur SSH);
-/// „Tunnel“ (M5, nur SSH); „Dateien“ kommt mit M6, nie als Platzhalter.
+/// „Tunnel“ (M5) und „Dateien“ (M6), beide nur bei SSH.
 struct ConnectionInspector: View {
     @Bindable var info: ConnectionInfo
     let profiles: ProfileStore
+    let transfers: FileTransferModel
 
     var body: some View {
         if let summary = info.summary {
@@ -46,6 +47,9 @@ struct ConnectionInspector: View {
                 }
                 if summary.showsTunnels && (info.editableSession != nil || !summary.portForwardings.isEmpty) {
                     TunnelInspectorSection(info: info, forwardings: summary.portForwardings)
+                }
+                if summary.showsTunnels {
+                    FilesInspectorSection(model: transfers, isConnected: info.isRunning)
                 }
             }
             .formStyle(.grouped)

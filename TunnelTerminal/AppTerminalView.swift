@@ -11,6 +11,9 @@ final class AppTerminalView: TerminalView {
     /// F1–F4 mit eingeschalteter Option; Wert 1…4.
     var onFunctionKey: ((Int) -> Void)?
     var isPastePending: Bool = false
+    /// Dateien aufs Terminal ziehen (M6): nur in SSH-Tabs ohne laufende Übertragung (fragt das Fenster).
+    var acceptsFiles: () -> Bool = { false }
+    var onDropFiles: (([URL]) -> Void)?
     /// Nur für Tests ändern.
     var settings: UserDefaults = .standard
 
@@ -34,6 +37,21 @@ final class AppTerminalView: TerminalView {
         } else {
             super.rightMouseDown(with: event)
         }
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        acceptsFiles() && !Self.fileURLs(sender).isEmpty ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let urls: [URL] = Self.fileURLs(sender)
+        guard acceptsFiles(), !urls.isEmpty else { return false }
+        onDropFiles?(urls)
+        return true
+    }
+
+    private static func fileURLs(_ info: any NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
     /// Tasten vor SwiftTerm (über den Tasten-Monitor des Fensters; `keyDown` lässt sich außerhalb von SwiftTerm nicht

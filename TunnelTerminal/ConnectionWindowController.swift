@@ -2,13 +2,12 @@ import AppKit
 import TunnelTerminalCore
 import SwiftTerm
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Hauptfenster bzw. ein Tab, Gerüst B „Werkbank“ (Plan 3.1): links die Seitenleiste mit Schnellverbindung und
 /// Sitzungen, in der Mitte Startansicht bzw. Terminal, rechts der Inspektor. Menübefehle zu Sitzungen und zur
 /// Verbindung landen hier über die Responder-Kette.
 final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation,
-    NSToolbarItemValidation, NSToolbarDelegate, TerminalViewDelegate {
+    NSToolbarItemValidation, TerminalViewDelegate {
     /// Gemeinsame Kennung, damit macOS die Fenster zu Tabs zusammenfasst.
     static let tabbingIdentifier: String = "Verbindung"
 
@@ -31,6 +30,9 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     private let sidebarItem: NSSplitViewItem
     private let inspectorItem: NSSplitViewItem
     private let area: TerminalArea = TerminalArea()
+    private let toolbarDelegate: WorkbenchToolbar = WorkbenchToolbar()
+    /// Dateiübertragung dieses Tabs (M6).
+    private let transfers: FileTransferController = FileTransferController()
 
     private var connection: Connection?
     private(set) var terminal: AppTerminalView?
@@ -52,11 +54,9 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     /// Seriell: Das Gerät ist mit dem Start offen und schweigt oft, bis man tippt (kein „Verbinde …“ bis zur Ausgabe).
     private var opensInstantly: Bool = false
 
-    private static let registryType: UTType = UTType(filenameExtension: "reg") ?? .data
-    private static let disconnectItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("trennen")
-    private static let tunnelItem: NSToolbarItem.Identifier = NSToolbarItem.Identifier("tunnel")
 
     var isConnected: Bool { connection?.isRunning ?? false }
+    var isTransferring: Bool { transfers.isRunning }
     var showsSidebar: Bool { !sidebarItem.isCollapsed }
     var showsInspector: Bool { !inspectorItem.isCollapsed }
 
@@ -85,7 +85,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         content.minimumThickness = 360
 
         let inspector: NSHostingController<ConnectionInspector> = NSHostingController(
-            rootView: ConnectionInspector(info: info, profiles: profiles))
+            rootView: ConnectionInspector(info: info, profiles: profiles, transfers: transfers.model))
         inspector.sizingOptions = []
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
@@ -106,7 +106,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         super.init(window: window)
 
         let toolbar: NSToolbar = NSToolbar(identifier: "Hauptfenster")
-        toolbar.delegate = self
+        toolbar.delegate = toolbarDelegate
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
         window.toolbarStyle = .unified
@@ -123,6 +123,16 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         sessions.revealSidebar = { [weak self] in self?.sidebarItem.isCollapsed = false }
         quick.connect = { [weak self] text, choice in self?.connectQuick(text, using: choice) }
         info.selectProfile = { [weak self] _ in self?.applyProfile() }
+        transfers.window = { [weak self] in self?.window }
+        transfers.connection = { [weak self] in self?.connection }
+        transfers.model.upload = { [weak self] urls in
+            guard let self, canTransfer else { return }
+            transfers.upload(urls)
+        }
+        transfers.model.chooseFiles = { [weak self] in self?.uploadFiles(nil) }
+        transfers.model.download = { [weak self] in self?.downloadFile(nil) }
+        transfers.model.cancel = { [weak self] in self?.cancelTransfer(nil) }
+        transfers.revealInspector = { [weak self] in self?.inspectorItem.isCollapsed = false }
         NotificationCenter.default.addObserver(self, selector: #selector(profilesChanged(_:)),
                                                name: ProfileStore.didChange, object: profiles)
 
@@ -257,6 +267,10 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         view.onPaste = { [weak self] text in self?.requestPaste(text) }
         view.onPasteDecision = { [weak self] insert in self?.finishPaste(insert) }
         view.onFunctionKey = { [weak self] number in self?.functionKey(number) }
+        // Dateien aufs Terminal ziehen lädt sie hoch (M6); SwiftTerm selbst nimmt keine Dateien an
+        view.registerForDraggedTypes([.fileURL])
+        view.acceptsFiles = { [weak self] in self?.canTransfer ?? false }
+        view.onDropFiles = { [weak self] urls in self?.transfers.upload(urls) }
         view.apply(profiles.profile(id: info.profileID))
         area.show(view)
         let status: NSHostingView<StatusBar> = NSHostingView(rootView: StatusBar(info: info))
@@ -368,6 +382,38 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     @objc func editTunnels(_ sender: Any?) {
         guard window?.attachedSheet == nil, canEditTunnels, let name = info.editableSession else { return }
         sessions.edit(name, showingTunnels: true)
+    }
+
+    // MARK: - Menübefehle: Dateien (M6)
+
+    /// Symbolleiste „Hochladen“, Verbindung › Datei hochladen …, Klick auf die Ablagefläche im Inspektor.
+    @objc func uploadFiles(_ sender: Any?) {
+        guard let window, canTransfer else { return }
+        let panel: NSOpenPanel = NSOpenPanel()
+        panel.message = "Dateien zum Hochladen wählen – den Zielordner auf dem Server wählst du danach"
+        panel.prompt = "Weiter …"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK else { return }
+            self?.transfers.upload(panel.urls)
+        }
+    }
+
+    @objc func downloadFile(_ sender: Any?) {
+        guard canTransfer else { return }
+        transfers.download()
+    }
+
+    @objc func cancelTransfer(_ sender: Any?) {
+        transfers.cancel()
+    }
+
+    /// Verbundener SSH-Tab (Plan M6: „in einem verbundenen Fenster“; pscp spricht nur SSH) ohne offenes Sheet und ohne
+    /// laufende Übertragung.
+    private var canTransfer: Bool {
+        isConnected && info.summary?.showsTunnels == true && window?.attachedSheet == nil && !transfers.isRunning
     }
 
     /// Gespeicherte SSH-Sitzung im Tab (nur dort wirken Weiterleitungen).
@@ -515,80 +561,6 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
 
     @objc func connectSessions(_ sender: Any?) { sessions.connect(sessions.selection) }
 
-    /// Registrierungsdatei (`.reg`) aus Windows-PuTTY.
-    @objc func importRegistry(_ sender: Any?) {
-        let panel: NSOpenPanel = NSOpenPanel()
-        panel.message = "Registrierungsdatei (.reg) aus Windows-PuTTY wählen (regedit: Export von HKEY_CURRENT_USER\\Software\\SimonTatham)"
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [Self.registryType]
-        runImportPanel(panel, startingIn: FileManager.default.homeDirectoryForCurrentUser)
-    }
-
-    /// PuTTY-Ordner von PuTTY für macOS/Linux (`~/.config/putty`, `~/.putty`). Eine Auswahl „Datei oder Ordner“ in einem
-    /// Dialog geht nicht: NSOpenPanel öffnet einen markierten Ordner dann, statt ihn zu wählen.
-    @objc func importFolder(_ sender: Any?) {
-        let panel: NSOpenPanel = NSOpenPanel()
-        panel.message = "PuTTY-Ordner wählen (enthält den Unterordner „sessions“, z. B. ~/.config/putty)"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        let home: URL = FileManager.default.homeDirectoryForCurrentUser
-        let known: URL? = [".config/putty", ".putty"].map { home.appendingPathComponent($0, isDirectory: true) }
-            .first { FileManager.default.fileExists(atPath: $0.appendingPathComponent("sessions").path) }
-        runImportPanel(panel, startingIn: known ?? home)
-    }
-
-    private func runImportPanel(_ panel: NSOpenPanel, startingIn directory: URL) {
-        guard let window else { return }
-        panel.prompt = "Importieren"
-        panel.allowsMultipleSelection = false
-        panel.showsHiddenFiles = true   // ~/.config und ~/.putty sind versteckt
-        panel.directoryURL = directory
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.sessions.prepareImport(from: url)
-        }
-    }
-
-    @objc func exportRegistry(_ sender: Any?) {
-        guard let window else { return }
-        let names: [String] = exportNames
-        let panel: NSSavePanel = NSSavePanel()
-        panel.message = "Für Windows-PuTTY: Datei doppelklicken oder mit regedit importieren"
-        panel.nameFieldStringValue = "PuTTY-Sitzungen.reg"
-        panel.allowedContentTypes = [Self.registryType]
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                try self.sessions.library.writeRegistryExport(of: names, to: url)
-            } catch {
-                self.sessions.report(error)
-            }
-        }
-    }
-
-    @objc func exportFolder(_ sender: Any?) {
-        guard let window else { return }
-        let names: [String] = exportNames
-        let panel: NSSavePanel = NSSavePanel()
-        panel.message = "Für PuTTY unter macOS oder Linux: Ordner als ~/.config/putty verwenden oder dorthin kopieren"
-        panel.nameFieldStringValue = "putty"
-        panel.canCreateDirectories = true
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                try self.sessions.library.exportFolder(of: names, to: url)
-            } catch {
-                self.sessions.report(error)
-            }
-        }
-    }
-
-    /// Ausgewählte Sitzungen, ohne Auswahl alle.
-    private var exportNames: [String] {
-        sessions.savedSelection.isEmpty ? sessions.library.names : sessions.savedSelection
-    }
-
     /// ⌘⌫ löscht Sitzungen nur, wenn die Sitzungsliste selbst den Fokus hat – im Terminal, in Textfeldern und auf
     /// anderen Bedienelementen gehört die Taste dorthin. Bei offenem Sheet (Editor) zeigt `firstResponder` noch die
     /// Liste, obwohl im Sheet getippt wird.
@@ -615,45 +587,19 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
              #selector(performTextFinderAction(_:)): terminal != nil
         case #selector(duplicateConnection(_:)): connection != nil
         case #selector(editTunnels(_:)): canEditTunnels
+        case #selector(uploadFiles(_:)), #selector(downloadFile(_:)): canTransfer
+        case #selector(cancelTransfer(_:)): transfers.isRunning
         default: true
         }
     }
 
     // MARK: - Symbolleiste
 
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Self.tunnelItem, Self.disconnectItem,
-         .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        let item: NSToolbarItem = NSToolbarItem(itemIdentifier: itemIdentifier)
-        switch itemIdentifier {
-        case Self.disconnectItem:
-            item.label = "Trennen"
-            item.toolTip = "Verbindung trennen (⌘.)"
-            item.image = NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: "Trennen")
-            item.action = #selector(disconnect(_:))
-        case Self.tunnelItem:
-            item.label = "Tunnel"
-            item.toolTip = "Port-Weiterleitungen dieser Sitzung bearbeiten"
-            item.image = NSImage(systemSymbolName: "point.3.connected.trianglepath.dotted", accessibilityDescription: "Tunnel")
-            item.action = #selector(editTunnels(_:))
-        default:
-            return nil
-        }
-        return item
-    }
-
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case Self.disconnectItem: isConnected
-        case Self.tunnelItem: window?.attachedSheet == nil && canEditTunnels
+        case WorkbenchToolbar.disconnect: isConnected
+        case WorkbenchToolbar.tunnel: window?.attachedSheet == nil && canEditTunnels
+        case WorkbenchToolbar.upload: canTransfer
         default: true
         }
     }
@@ -661,12 +607,18 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     // MARK: - Fenster
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard isConnected, !closingConfirmed, let connection else { return true }
+        guard isConnected || isTransferring, !closingConfirmed, let connection else { return true }
         let alert: NSAlert = NSAlert()
-        alert.messageText = "Verbindung zu „\(SessionWarning.visible(connection.displayName))“ trennen?"
-        alert.informativeText = "Die laufende Sitzung wird beendet."
-        alert.addButton(withTitle: "Trennen").hasDestructiveAction = true
-        alert.addButton(withTitle: "Abbrechen")
+        if isConnected {
+            alert.messageText = "Verbindung zu „\(SessionWarning.visible(connection.displayName))“ trennen?"
+            alert.informativeText = isTransferring ? "Die laufende Sitzung und die Dateiübertragung werden beendet."
+                : "Die laufende Sitzung wird beendet."
+        } else {
+            alert.messageText = "Dateiübertragung beenden?"
+            alert.informativeText = "Das Fenster schließt, die laufende Übertragung wird abgebrochen."
+        }
+        alert.addButton(withTitle: isConnected ? "Trennen" : "Übertragung beenden").hasDestructiveAction = true
+        alert.addButton(withTitle: isConnected ? "Abbrechen" : "Weiter übertragen")
         alert.beginSheetModal(for: sender) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
             self.closingConfirmed = true
@@ -679,6 +631,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         connection?.hangUp()
+        transfers.cancel()
         releaseCountedSession()
         onClose?(self)
     }

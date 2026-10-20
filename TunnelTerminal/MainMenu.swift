@@ -88,6 +88,11 @@ enum MainMenu {
         // wie der Symbolleisten-Knopf „Tunnel“ (jeder Symbolleisten-Befehl steht auch im Menü, RL 3.4 Regel 5)
         connection.addItem(item("Tunnel bearbeiten …", #selector(ConnectionWindowController.editTunnels(_:))))
         connection.addItem(.separator())
+        // Dateiübertragung (M6) wie der Symbolleisten-Knopf „Hochladen“ und der Inspektor-Abschnitt „Dateien“
+        connection.addItem(item("Dateien hochladen …", #selector(ConnectionWindowController.uploadFiles(_:))))
+        connection.addItem(item("Datei herunterladen …", #selector(ConnectionWindowController.downloadFile(_:))))
+        connection.addItem(item("Übertragung abbrechen", #selector(ConnectionWindowController.cancelTransfer(_:))))
+        connection.addItem(.separator())
         connection.addItem(item("Erneut verbinden", #selector(ConnectionWindowController.reconnect(_:)), "r"))
         connection.addItem(item("Verbindung duplizieren", #selector(ConnectionWindowController.duplicateConnection(_:)), "d"))
         connection.addItem(item("Trennen", #selector(ConnectionWindowController.disconnect(_:)), "."))

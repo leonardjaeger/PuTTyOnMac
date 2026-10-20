@@ -15,16 +15,20 @@ public struct PlinkCommand: Equatable, Sendable {
                 passwordFromPipe: Bool = false) throws(InputError) {
         try InputRules.checkSessionName(sessionName)
         arguments = ["-load", sessionName] + (passwordFromPipe ? ["-pwfile", "/dev/fd/3"] : [])
+        environment = Self.environment(puttyDirectory: puttyDirectory, parentEnvironment: parentEnvironment)
+    }
 
+    /// Feste Umgebung für die PuTTY-Werkzeuge (plink, pscp).
+    static func environment(puttyDirectory: String, parentEnvironment: [String: String]) -> [String] {
         var values: [String: String] = [
             "COLORTERM": "truecolor",
             "LANG": "en_US.UTF-8",
             "PUTTYDIR": puttyDirectory,
             "TERM": "xterm-256color"
         ]
-        for name in Self.passedThrough {
+        for name in passedThrough {
             if let value = parentEnvironment[name], !value.isEmpty { values[name] = value }
         }
-        environment = values.keys.sorted().map { "\($0)=\(values[$0]!)" }
+        return values.keys.sorted().map { "\($0)=\(values[$0]!)" }
     }
 }

@@ -157,6 +157,13 @@ extension SessionFile {
         return host.isEmpty ? nil : (Self.withoutBrackets(Array(host.utf8)), portNumber)
     }
 
+    /// Benutzer und Server für pscp (M6): wie plink sie liest, IPv6 ohne eckige Klammern (`PscpCommand` setzt sie wieder).
+    /// Leerer Benutzer: pscp nähme stillschweigend den Benutzer dieses Macs (gemessen) – die App fragt dann nach.
+    public var transferAddress: (user: String, host: String) {
+        let address: (user: String, host: String) = plinkAddress
+        return (address.user, Self.withoutBrackets(Array(address.host.utf8)))
+    }
+
     /// Benutzer und Server, wie plink sie aus `HostName` liest (`prepare_session`, sessprep.c): Leerzeichen vorn
     /// fallen weg, ein `benutzer@` (bis zum letzten „@“) ersetzt `UserName`, ein einzelnes `:…` hinten wird
     /// verworfen, übrige Leerzeichen und Tabs zählen nicht. Byteweise, damit kein Unicode-Vergleich abweicht.

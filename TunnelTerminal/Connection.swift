@@ -35,7 +35,8 @@ final class Connection {
     private let sessionName: String
     private let process: TerminalProcess = TerminalProcess()
     private var hungUpByUser: Bool = false
-    private let puttyDirectory: @MainActor () throws -> PuTTYDirectory
+    /// PuTTY-Ordner der Sitzung (auch für die Dateiübertragung, M6).
+    let puttyDirectory: @MainActor () throws -> PuTTYDirectory
     /// Schlüsselbund für gespeicherte Passwörter; `nil` bei Schnellverbindungen und „ohne gespeichertes Passwort“.
     private let passwords: PasswordStore?
     private var rejectionWatch: RejectedPasswordWatch = RejectedPasswordWatch()
@@ -49,6 +50,9 @@ final class Connection {
     /// Sitzungsprotokoll der App (M4), solange die Verbindung läuft; nur für gespeicherte Sitzungen mit `LogType`.
     private(set) var log: SessionLogWriter?
     private let logFolder: URL
+    /// Einstellungen, mit denen plink zuletzt gestartet ist: Dateiübertragungen (M6) nutzen dieselbe Sitzung wie das
+    /// Terminal, auch wenn sie inzwischen im Editor geändert wurde (gilt wie bei Tunneln ab dem nächsten Verbinden).
+    private(set) var startedSettings: SessionFile?
     /// Lokale Ports der Weiterleitungen, die beim Start schon belegt waren (M5): plink meldet das nur mit `-v`.
     private(set) var busyLocalPorts: [Int] = []
 
@@ -98,10 +102,11 @@ final class Connection {
 
     /// Gefahren, die vor jedem Verbinden bestätigt werden müssen (S4), auch aus Sitzungen, die als SSH-Proxy geladen
     /// werden. Wirft, wenn eine beteiligte Sitzung nicht lesbar ist: dann nicht verbinden (plink läse sie trotzdem).
-    func warningsRequiringConfirmation() throws -> [SessionWarning] {
+    /// `file`: eine schon gelesene Fassung der Sitzung (Dateiübertragung: die beim Start, `transferSettings`).
+    func warningsRequiringConfirmation(for file: SessionFile? = nil) throws -> [SessionWarning] {
         guard quickSession == nil else { return [] }
         let directory: PuTTYDirectory = try puttyDirectory()
-        return try SessionWarning.requiringConfirmation(for: try directory.read(sessionNamed: sessionName),
+        return try SessionWarning.requiringConfirmation(for: try file ?? directory.read(sessionNamed: sessionName),
                                                       named: sessionName) { name in
             directory.exists(sessionNamed: name) ? try directory.read(sessionNamed: name) : nil
         }
@@ -123,6 +128,7 @@ final class Connection {
             directory = try puttyDirectory()
             if let quickSession { try directory.write(quickSession, sessionName: sessionName) }
             saved = quickSession == nil ? try? directory.read(sessionNamed: sessionName) : nil
+            startedSettings = quickSession ?? saved
             secret = storedPassword(from: saved)
             command = try PlinkCommand(sessionName: sessionName, puttyDirectory: directory.url.path,
                                        parentEnvironment: ProcessInfo.processInfo.environment,
@@ -216,6 +222,16 @@ final class Connection {
         case .none:
             return nil
         }
+    }
+
+    /// Sitzung für Dateiübertragungen: die beim letzten Start (sonst die gespeicherte bzw. die Schnellsitzung).
+    var transferSettings: SessionFile? { startedSettings ?? settings() }
+
+    /// Passwort aus dem Schlüsselbund für pscp (M6): nur, wenn es zum Ziel der Sitzung gehört (S1).
+    func storedPasswordForTransfer() -> Data? {
+        guard let passwords, case .saved(let name) = target, let passwordTarget = transferSettings?.passwordTarget,
+              case .found(let data) = passwords.lookup(session: name, target: passwordTarget) else { return nil }
+        return data
     }
 
     func send(_ data: ArraySlice<UInt8>) { process.send(data) }

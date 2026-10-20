@@ -1,6 +1,7 @@
 #!/bin/bash
 # M1-Oberflächenprüfung: Wegwerf-SSH-Server nur für diesen Benutzer auf 127.0.0.1:2222 mit Wegwerf-Schlüssel
 # im eigenen ssh-agent. ~/.ssh und das System-sshd bleiben unberührt. Aufruf: testserver.sh start|stop|status
+# SFTP (M6): SFTP_START=<ordner> setzt den Startordner von sftp-server (leere Pfade landen dort statt im Home).
 set -u
 d="$HOME/Library/Caches/TunnelTerminal-Build/m1-testserver"
 case "${1:-status}" in
@@ -20,6 +21,7 @@ KbdInteractiveAuthentication no
 UsePAM no
 StrictModes no
 PidFile $d/sshd.pid
+Subsystem sftp /usr/libexec/sftp-server${SFTP_START:+ -d $SFTP_START}
 CFG
     /usr/sbin/sshd -t -f "$d/sshd_config" || exit 1
     nohup /usr/sbin/sshd -D -e -f "$d/sshd_config" > "$d/sshd.log" 2>&1 &

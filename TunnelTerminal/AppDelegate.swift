@@ -36,19 +36,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let running: Int = controllers.count(where: { $0.isConnected })
-        guard running > 0 else { return .terminateNow }
+        let transferring: Int = controllers.count(where: { $0.isTransferring })
+        guard running + transferring > 0 else { return .terminateNow }
         let alert: NSAlert = NSAlert()
         alert.messageText = "\(AppIdentity.name) beenden?"
-        alert.informativeText = running == 1
-            ? "Eine Verbindung ist noch aktiv und wird getrennt."
+        let connections: String = running == 1 ? "Eine Verbindung ist noch aktiv und wird getrennt."
             : "\(running) Verbindungen sind noch aktiv und werden getrennt."
+        let transfers: String = transferring == 1 ? "Eine Dateiübertragung läuft und wird abgebrochen."
+            : "\(transferring) Dateiübertragungen laufen und werden abgebrochen."
+        alert.informativeText = [running > 0 ? connections : nil, transferring > 0 ? transfers : nil]
+            .compactMap { $0 }.joined(separator: " ")
         alert.addButton(withTitle: "Beenden").hasDestructiveAction = true
         alert.addButton(withTitle: "Abbrechen")
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        for controller in controllers { controller.disconnect(nil) }
+        for controller in controllers {
+            controller.disconnect(nil)
+            controller.cancelTransfer(nil)   // entfernt eine angefangene Teildatei sofort
+        }
         removeQuickSessions()   // plink hat die Sitzungen beim Start gelesen
     }
 

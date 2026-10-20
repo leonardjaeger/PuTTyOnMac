@@ -42,6 +42,11 @@ build/m4/bench/.build/
 build/m5/*
 !build/m5/*.sh
 !build/m5/*.py
+# M6: Hilfsskripte (Machbarkeit, Oberflächenprüfung, Ende-zu-Ende-Test); schritt.txt, Quellarchiv und Review-Diff bleiben lokal
+!build/m6/
+build/m6/*
+!build/m6/*.sh
+!build/m6/*.py
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

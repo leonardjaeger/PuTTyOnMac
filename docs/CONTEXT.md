@@ -52,3 +52,9 @@ _Nicht:_ Verbindung, Profil.
 **Status** – „verbunden“, solange mindestens ein Tab die gespeicherte Sitzung offen hat.
 
 **Profil** – Darstellung des Terminals (Schrift, Farben …), ab M4. _Nicht:_ Sitzung.
+
+**Dateiübertragung** – Hoch- oder Herunterladen von Dateien zwischen diesem Mac und dem Server einer SSH-Verbindung, über pscp (SFTP) mit den Einstellungen der Sitzung des Tabs (ab M6). Läuft neben dem Terminal, nicht darin. _Nicht:_ SFTP-Browser.
+
+**Zielordner** – Ordner auf dem Server, in den hochgeladen wird; eingetippt, weil pscp das aktuelle Verzeichnis der Shell nicht kennt. Leer = persönlicher Ordner des Benutzers auf dem Server.
+
+**Teildatei** – versteckte Datei neben der Zieldatei, in die pscp beim Herunterladen schreibt. Erst nach Erfolg ersetzt sie die Zieldatei; bei Abbruch oder Fehler wird sie entfernt.
