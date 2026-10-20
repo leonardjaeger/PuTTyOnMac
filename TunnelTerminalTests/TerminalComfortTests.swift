@@ -211,10 +211,10 @@ final class TerminalComfortTests: XCTestCase {
 
     /// Vorschau der OSC-52-Anfrage: kurz, Steuerzeichen sichtbar (S11).
     func testClipboardPreview() {
-        XCTAssertEqual(ConnectionWindowController.preview("a\u{1B}[31mb"), "a\\u{1B}[31mb")
+        XCTAssertEqual(AlertText.preview("a\u{1B}[31mb"), "a\\u{1B}[31mb")
         let long: String = (1...12).map(String.init).joined(separator: "\n")
-        XCTAssertEqual(ConnectionWindowController.preview(long), (1...10).map(String.init).joined(separator: "\n") + " …")
-        XCTAssertTrue(ConnectionWindowController.preview(String(repeating: "x", count: 500)).hasSuffix(" …"))
+        XCTAssertEqual(AlertText.preview(long), (1...10).map(String.init).joined(separator: "\n") + " …")
+        XCTAssertTrue(AlertText.preview(String(repeating: "x", count: 500)).hasSuffix(" …"))
     }
 
     // MARK: Steuersequenzen vom Server (S11)
@@ -239,7 +239,7 @@ final class TerminalComfortTests: XCTestCase {
     func testOversizedClipboardRequestIsDropped() throws {
         let controller: ConnectionWindowController = makeWindow()
         controller.clipboardCopy(source: TerminalView(frame: .zero),
-                                 content: Data(count: ConnectionWindowController.clipboardLimit + 1))
+                                 content: Data(count: ServerRequestPrompts.clipboardLimit + 1))
         XCTAssertNil(controller.window?.attachedSheet)   // zu groß: gar nicht erst fragen
     }
 

@@ -23,8 +23,8 @@ final class SessionLibrary {
     /// Zählt jedes Neuladen (Anlegen, Löschen, Umbenennen, Import, ⌘Z): Der Editor baut sich dann neu auf und
     /// bearbeitet nie eine Sitzung, die es so nicht mehr gibt. Normales Speichern im Editor zählt nicht mit.
     private(set) var revision: Int = 0
-    /// Server je Sitzung, für die Suche.
-    private var hosts: [String: String] = [:]
+    /// Server (für die Suche) und Verbindungsart (Seitenleiste, M7) je Sitzung; `nil` bei unbekanntem `Protocol`.
+    private var listing: [String: (address: String, connectionProtocol: ConnectionProtocol?)] = [:]
 
     init(directory: PuTTYDirectory, reservedPrefix: String = AppIdentity.quickSessionPrefix, passwords: PasswordStore? = nil) {
         self.directory = directory
@@ -40,12 +40,20 @@ final class SessionLibrary {
         let folded: String = reservedPrefix.lowercased()
         let previous: [String] = names
         names = directory.sessionNames().filter { !$0.lowercased().hasPrefix(folded) }
-        hosts = Dictionary(names.map { ($0, file(named: $0)?.listAddress ?? "") }, uniquingKeysWith: { first, _ in first })
+        var entries: [String: (address: String, connectionProtocol: ConnectionProtocol?)] = [:]
+        for name in names {
+            let settings: SessionFile? = file(named: name)
+            entries[name] = (settings?.listAddress ?? "", settings?.connectionProtocol)
+        }
+        listing = entries
         if countsAsChange ?? (names != previous) { revision += 1 }
     }
 
     /// Server einer Sitzung (leer, wenn keiner eingetragen ist).
-    func host(of name: String) -> String { hosts[name] ?? "" }
+    func host(of name: String) -> String { listing[name]?.address ?? "" }
+
+    /// Verbindungsart einer Sitzung für die Seitenleiste.
+    func connectionProtocol(of name: String) -> ConnectionProtocol? { listing[name]?.connectionProtocol }
 
     func file(named name: String) -> SessionFile? {
         try? directory.read(sessionNamed: name)
@@ -56,7 +64,7 @@ final class SessionLibrary {
         let query: String = search.trimmingCharacters(in: .whitespaces)
         let shown: [String] = names.filter { name in
             name != SessionName.defaultSettings && (query.isEmpty || name.localizedCaseInsensitiveContains(query)
-                || (hosts[name] ?? "").localizedCaseInsensitiveContains(query))
+                || host(of: name).localizedCaseInsensitiveContains(query))
         }
         var order: [String?] = []
         var members: [String?: [String]] = [:]
@@ -78,7 +86,7 @@ final class SessionLibrary {
     func save(_ file: SessionFile, as name: String) throws {
         try directory.write(file, sessionName: name)
         // Erstes Speichern der Standardeinstellungen: in die Liste, ohne den Editor neu aufzubauen
-        if !names.contains(name) { reload(countsAsChange: false) } else { hosts[name] = file.listAddress }
+        if !names.contains(name) { reload(countsAsChange: false) } else { listing[name] = (file.listAddress, file.connectionProtocol) }
     }
 
     // MARK: - Änderungen mit Undo

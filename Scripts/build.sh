@@ -5,6 +5,7 @@
 #   kern    – nur die Kern-Tests (swift test, schnell)
 #   skript  – build/skript.sh ausführen (Meilenstein-Hilfsskripte)
 #   log     – Systemprotokoll der App der letzten 15 Minuten
+#   dmg     – Weitergabe-DMG: Release-Bau, Prüfungen, build/Weitergabe/TunnelTerminal-<Version>.dmg (Scripts/make-dmg.sh)
 set -u
 cd "$(dirname "$0")/.." || exit 1
 mode="${1:-}"
@@ -31,11 +32,14 @@ case "$mode" in
     [ -f build/skript.sh ] || { echo "build/skript.sh fehlt."; exit 2; }
     bash build/skript.sh
     ;;
+  dmg)
+    bash Scripts/make-dmg.sh
+    ;;
   log)
     log show --last 15m --info --style compact --predicate 'subsystem BEGINSWITH "de.leonardjaeger.tunnelterminal"'
     ;;
   *)
-    echo "Unbekannter Modus: '$mode' (erlaubt: build, test, kern, skript, log)"
+    echo "Unbekannter Modus: '$mode' (erlaubt: build, test, kern, skript, log, dmg)"
     exit 64
     ;;
 esac

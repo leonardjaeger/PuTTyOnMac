@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Einstellungen (⌘,) in Reitern im Stil der Symbolleiste (Richtlinien 3.4 Regel 16). M4: Allgemein und Profile;
-/// Sicherheit und Erweitert folgen in M7.
+/// Einstellungen (⌘,) in Reitern im Stil der Symbolleiste (Richtlinien 3.4 Regel 16): Allgemein und Profile (M4),
+/// Sicherheit und Erweitert (M7).
 final class SettingsWindowController: NSWindowController {
     init(profiles: ProfileStore) {
         let tabs: NSTabViewController = NSTabViewController()
@@ -17,6 +17,8 @@ final class SettingsWindowController: NSWindowController {
         }
         add("Allgemein", symbol: "gearshape", GeneralSettingsView())
         add("Profile", symbol: "paintpalette", ProfilesSettingsView(store: profiles))
+        add("Sicherheit", symbol: "lock.shield", SecuritySettingsView())
+        add("Erweitert", symbol: "gearshape.2", AdvancedSettingsView())
         let window: NSWindow = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isRestorable = false

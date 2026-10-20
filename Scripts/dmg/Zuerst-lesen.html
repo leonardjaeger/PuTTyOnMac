@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TunnelTerminal – Zuerst lesen</title>
+<style>
+  body { font-family: "Helvetica Neue", Helvetica, sans-serif; font-size: 13px; line-height: 1.45; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin-top: 18px; }
+  code { font-family: Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>TunnelTerminal – so installierst und öffnest du die App</h1>
+
+<h2>1. Installieren</h2>
+<p>Ziehe <b>TunnelTerminal</b> in diesem Fenster auf den Ordner <b>Programme</b>. Danach kannst du das Fenster schließen
+und die DMG im Finder auswerfen.</p>
+
+<h2>Vorher: Echtheit prüfen</h2>
+<p>TunnelTerminal ist nicht bei Apple beglaubigt – macOS kann deshalb nicht erkennen, ob jemand die App unterwegs
+ausgetauscht hat. Lass dir die <b>Prüfsumme (SHA-256)</b> auf einem anderen Weg schicken als die DMG (Nachricht, Telefon)
+und vergleiche sie im Programm <b>Terminal</b>:</p>
+<p><code>shasum -a 256 ~/Downloads/TunnelTerminal-*.dmg</code></p>
+<p>Stimmen die beiden langen Zahlen nicht genau überein, öffne die App nicht.</p>
+
+<h2>2. Beim ersten Öffnen</h2>
+<p>Ohne Beglaubigung (dafür bräuchte es ein kostenpflichtiges Entwicklerkonto) hält macOS den ersten Start an. Das ist nur
+einmal nötig:</p>
+<p><b>macOS 15 Sequoia und neuer</b></p>
+<ol>
+  <li>Öffne TunnelTerminal im Ordner Programme per Doppelklick. macOS meldet, dass die App nicht geöffnet wurde – klicke auf <b>Fertig</b>.</li>
+  <li>Öffne <b>Systemeinstellungen › Datenschutz &amp; Sicherheit</b> und scrolle nach unten zum Abschnitt <b>Sicherheit</b>.</li>
+  <li>Dort steht, dass TunnelTerminal blockiert wurde. Klicke auf <b>Dennoch öffnen</b> und bestätige mit deinem Passwort oder Touch ID.</li>
+  <li>Klicke in der letzten Rückfrage auf <b>Öffnen</b>.</li>
+</ol>
+<p><b>macOS 14 Sonoma</b></p>
+<ol>
+  <li>Klicke im Ordner Programme mit der rechten Maustaste (oder mit gedrückter ctrl-Taste) auf TunnelTerminal.</li>
+  <li>Wähle <b>Öffnen</b> und bestätige noch einmal mit <b>Öffnen</b>.</li>
+</ol>
+
+<h2>3. Falls macOS meldet, die App sei „beschädigt“</h2>
+<p>Das passiert manchmal bei Apps aus dem Internet oder per AirDrop. Nur wenn die Prüfsumme stimmt: Öffne das Programm
+<b>Terminal</b>, füge diese Zeile ein und drücke die Eingabetaste:</p>
+<p><code>xattr -dr com.apple.quarantine /Applications/TunnelTerminal.app</code></p>
+<p>Danach lässt sich TunnelTerminal normal öffnen.</p>
+
+<h2>4. Gut zu wissen</h2>
+<ul>
+  <li>Voraussetzung: macOS 14 Sonoma oder neuer auf einem Mac mit Apple-Chip.</li>
+  <li>Die Kurzanleitung findest du in der App unter <b>Hilfe › Kurzanleitung</b>, alle Tastenkürzel unter <b>Hilfe › Tastenkürzel</b>.</li>
+  <li>Sitzungen aus Windows-PuTTY übernimmst du über <b>Ablage › Importieren › Registrierungsdatei</b> (in Windows mit
+    <code>regedit</code> den Zweig <code>HKEY_CURRENT_USER\Software\SimonTatham\PuTTY\Sessions</code> exportieren).</li>
+  <li>Sicherst du ein Passwort im Schlüsselbund, fragt macOS beim ersten Verbinden, ob TunnelTerminal darauf zugreifen darf.</li>
+  <li>Verbindest du dich mit einem Gerät im eigenen Netzwerk (Router, Server zu Hause), fragt macOS einmal nach dem Zugriff
+    auf das <b>lokale Netzwerk</b>. Erlaube ihn und verbinde danach erneut. Nach einem Update auf eine neue Version von
+    TunnelTerminal kann die Frage noch einmal kommen.</li>
+  <li>Sollen <code>ssh://</code>-Links aus Safari in TunnelTerminal öffnen: <b>Einstellungen › Erweitert › TunnelTerminal als
+    Standard festlegen</b>.</li>
+  <li>TunnelTerminal hat kein Konto und schickt nichts ins Internet außer deinen eigenen Verbindungen.</li>
+</ul>
+
+<h2>5. Lizenz</h2>
+<p>TunnelTerminal © 2026 Leonard Jäger, MIT-Lizenz. Die App enthält PuTTY (© Simon Tatham und andere) und SwiftTerm
+(© Miguel de Icaza und andere), beide ebenfalls unter der MIT-Lizenz. Die vollständigen Lizenztexte stehen im App-Menü
+unter <b>Über TunnelTerminal</b>.</p>
+</body>
+</html>

@@ -13,8 +13,9 @@ final class WorkbenchToolbar: NSObject, NSToolbarDelegate {
          .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
     }
 
+    /// Anpassbar über Darstellung › Symbolleiste anpassen … (M7); jeder Befehl steht auch im Menü.
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [.space]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,

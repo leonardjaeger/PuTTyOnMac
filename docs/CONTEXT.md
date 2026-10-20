@@ -57,4 +57,6 @@ _Nicht:_ Verbindung, Profil.
 
 **Zielordner** – Ordner auf dem Server, in den hochgeladen wird; eingetippt, weil pscp das aktuelle Verzeichnis der Shell nicht kennt. Leer = persönlicher Ordner des Benutzers auf dem Server.
 
+**Link** – Adresse `ssh://benutzer@server:port` oder `telnet://server:port` aus einer anderen App, z. B. Safari (ab M7). Öffnet nach einer Bestätigung eine Schnellverbindung; übernommen werden nur Benutzer, Server und Port. Damit Links in dieser App landen, muss sie die **Standard-App** für das Schema sein (Einstellungen › Erweitert).
+
 **Teildatei** – versteckte Datei neben der Zieldatei, in die pscp beim Herunterladen schreibt. Erst nach Erfolg ersetzt sie die Zieldatei; bei Abbruch oder Fehler wird sie entfernt.

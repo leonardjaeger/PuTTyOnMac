@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import TunnelTerminalCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -10,6 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keysWindow: ToolWindowController?
     private var knownHostsWindow: ToolWindowController?
     private var settingsWindow: SettingsWindowController?
+    /// Hilfe-Fenster (M7), je eines für die App.
+    private var shortcutsWindow: ToolWindowController?
+    private var quickStartWindow: QuickStartWindowController?
+    /// Link, der vor dem Ende des Starts ankam (M7).
+    private var pendingLink: String?
+    /// Eine Link-Rückfrage ist offen: weitere Links verwerfen, statt Fenster um Fenster zu öffnen (S6).
+    /// Fenster mit der offenen Link-Rückfrage: sperrt weitere Links, bis sie zu ist (oder ihr Fenster geschlossen wurde).
+    private weak var linkPromptWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
@@ -23,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         newWindow(nil)
+        if let pendingLink {
+            self.pendingLink = nil
+            openLink(pendingLink)
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -59,6 +72,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         removeQuickSessions()   // plink hat die Sitzungen beim Start gelesen
     }
 
+    // MARK: - Links aus anderen Apps (M7, S6)
+
+    /// `ssh://` und `telnet://` (Info.plist `CFBundleURLTypes`). Mehrere Links auf einmal kann nur eine Webseite oder
+    /// ein Skript auslösen: nur der erste zählt, auch vor dem Ende des Starts.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let first = urls.first else { return }
+        if urls.count > 1 { AppLog.app.info("Link: \(urls.count - 1, privacy: .public) weitere verworfen") }
+        if library == nil {
+            if pendingLink == nil { pendingLink = first.absoluteString }   // vor applicationDidFinishLaunching
+        } else {
+            openLink(first.absoluteString)
+        }
+    }
+
+    /// Rückfrage im vordersten Fenster (ein freier Tab verbindet selbst, sonst ein neuer daneben); ohne Fenster (die App
+    /// läuft nach dem letzten weiter) oder mit offenem Sheet in einem neuen Fenster.
+    private func openLink(_ text: String) {
+        if let open = linkPromptWindow, open.attachedSheet != nil, controllers.contains(where: { $0.window === open }) {
+            AppLog.app.info("Link verworfen: eine Rückfrage ist noch offen")
+            return
+        }
+        let front: ConnectionWindowController? = keyController ?? controllers.last
+        guard let target = front.flatMap({ $0.window?.attachedSheet == nil ? $0 : nil }) ?? frontController() else { return }
+        target.showWindow(nil)
+        linkPromptWindow = target.window
+        target.openLink(text) { [weak self] in
+            self?.linkPromptWindow = nil
+        }
+    }
+
+    // MARK: - Fenster
+
     @objc func newWindow(_ sender: Any?) {
         let controller: ConnectionWindowController? = makeController()
         controller?.quick.requestFocus()
@@ -88,6 +133,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showSettings(_ sender: Any?) {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(profiles: AppIdentity.profiles) }
         settingsWindow?.showWindow(nil)
+    }
+
+    // MARK: - Hilfe (M7)
+
+    /// Über-Fenster mit Lizenzen (App-Menü).
+    @objc func showAbout(_ sender: Any?) {
+        AboutPanel.show()
+    }
+
+    @objc func showQuickStart(_ sender: Any?) {
+        if quickStartWindow == nil { quickStartWindow = QuickStartWindowController() }
+        quickStartWindow?.showWindow(nil)
+    }
+
+    /// Liest die Menüleiste bei jedem Öffnen neu.
+    @objc func showShortcuts(_ sender: Any?) {
+        let entries: [ShortcutOverview.Entry] = ShortcutOverview.entries(from: NSApp.mainMenu) + ShortcutOverview.withoutMenu
+        if let shortcutsWindow, let hosting = shortcutsWindow.contentViewController as? NSHostingController<ShortcutsView> {
+            hosting.rootView = ShortcutsView(entries: entries)
+        } else {
+            shortcutsWindow = ToolWindowController(title: "Tastenkürzel", autosaveName: "Tastenkürzel",
+                                                   rootView: ShortcutsView(entries: entries))
+        }
+        shortcutsWindow?.showWindow(nil)
+    }
+
+    /// Hilfe › PuTTY-Version (S7): eingebaute Version und wie Updates kommen.
+    @objc func showPuTTYVersion(_ sender: Any?) {
+        Task {
+            let release: String? = await PuTTYInfo.release()
+            let alert: NSAlert = NSAlert()
+            alert.messageText = release.map { "Eingebaut: PuTTY \($0)" } ?? "Die PuTTY-Version ist nicht lesbar."
+            alert.informativeText = PuTTYInfo.updateNote
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "PuTTY-Website öffnen")
+            let handle: (NSApplication.ModalResponse) -> Void = { response in
+                if response == .alertSecondButtonReturn { NSWorkspace.shared.open(PuTTYInfo.website) }
+            }
+            // Als Sheet am vordersten Fenster, sonst blockiert der Dialog die ganze App (Richtlinien 3.4 Regel 18)
+            if let window = NSApp.keyWindow, window.attachedSheet == nil {
+                alert.beginSheetModal(for: window, completionHandler: handle)
+            } else {
+                handle(alert.runModal())
+            }
+        }
     }
 
     /// Fenster „Bekannte Hostschlüssel“; liest die Liste neu, sobald es nach vorne kommt.

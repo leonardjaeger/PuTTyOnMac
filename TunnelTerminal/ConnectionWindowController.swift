@@ -42,9 +42,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     private var pendingPaste: String?
     /// Tasten vor SwiftTerm: Hinweisleiste (Esc, ⌘↩) und F1–F4 (`AppTerminalView.handleKey`).
     private var keyMonitor: Any?
-    /// OSC 52 einmal abgelehnt: weitere Wünsche dieser Verbindung ohne Rückfrage verwerfen (sonst sperrt ein Server
-    /// den Tab mit endlosen Rückfragen, Prüfer-Befund 3).
-    private var clipboardRefused: Bool = false
+    /// Wünsche des Servers aus der Ausgabe: Zwischenablage (OSC 52) und Links, nur mit Rückfrage (S11).
+    private let serverRequests: ServerRequestPrompts = ServerRequestPrompts()
     /// Gespeicherte Sitzung, die für den Status in der Seitenleiste als verbunden zählt.
     private var countedSession: String?
     private var closingConfirmed: Bool = false
@@ -77,7 +76,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
             rootView: SessionSidebar(model: sessions, quick: quick, connected: connected))
         sidebar.sizingOptions = []   // keine Größenbindung an den SwiftUI-Inhalt (Richtlinien 3.4 Regel 19)
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 210
+        sidebarItem.minimumThickness = 240   // „Standardeinstellungen“ ungekürzt (M7); 240 + 360 + 220 = Mindestbreite 820
         sidebarItem.maximumThickness = 360
         sidebarItem.isCollapsed = !showsSidebar
 
@@ -108,6 +107,8 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         let toolbar: NSToolbar = NSToolbar(identifier: "Hauptfenster")
         toolbar.delegate = toolbarDelegate
         toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.delegate = self
@@ -227,7 +228,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         // Dieselbe Verbindung noch einmal (⌘R): die Profil-Wahl im Inspektor bleibt für den Tab
         let sameTarget: Bool = connection?.target == newConnection.target
         connection = newConnection
-        clipboardRefused = false
+        serverRequests.reset()
         window?.title = defaultTitle
         let settings: SessionFile? = newConnection.settings()
         info.summary = settings.map(ConnectionSummary.init(file:))
@@ -423,6 +424,22 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         if case .saved(let name) = connection.target { name } else { nil }
     }
 
+    // MARK: - Links aus anderen Apps (M7, S6)
+
+    /// `ssh://` bzw. `telnet://` aus einer anderen App: Rückfrage am Fenster (`AppLinkPrompt`), dann in diesem Tab, wenn
+    /// er frei ist, sonst in einem neuen daneben. `done` läuft, sobald die Rückfrage geschlossen ist.
+    func openLink(_ text: String, defaults: UserDefaults = .standard, done: @escaping () -> Void = {}) {
+        AppLinkPrompt.show(text, defaults: defaults, in: window, done: done) { [weak self] link in
+            guard let self else { return }
+            do {
+                request(.connection(try Connection(endpoint: link.endpoint, connectionProtocol: link.connectionProtocol,
+                                                   puttyDirectory: puttyDirectory)))
+            } catch {
+                sessions.report(error)
+            }
+        }
+    }
+
     /// ⇧⌘K: Fokus in die Schnellverbindung (blendet die Seitenleiste ein).
     @objc func focusQuickConnect(_ sender: Any?) {
         sidebarItem.isCollapsed = false
@@ -571,37 +588,23 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        // Bei offenem Sheet (Editor, Rückfrage, Dialog) erreichen Menübefehle dieses Fenster weiter über das Hauptfenster:
-        // nur Trennen bleibt
-        if window?.attachedSheet != nil { return menuItem.action == #selector(disconnect(_:)) && isConnected }
-        return switch menuItem.action {
-        case #selector(reconnect(_:)): connection.map { !$0.isRunning } ?? false
-        case #selector(disconnect(_:)): isConnected
-        case #selector(deleteSessions(_:)): sessionListHasFocus && !sessions.savedSelection.isEmpty
-        case #selector(duplicateSessions(_:)):
-            !sessions.savedSelection.contains(SessionName.defaultSettings) && !sessions.savedSelection.isEmpty
-        case #selector(editSession(_:)): sessions.selection.count == 1
-        case #selector(connectSessions(_:)): !sessions.connectableSelection.isEmpty
-        case #selector(exportRegistry(_:)), #selector(exportFolder(_:)): !sessions.library.names.isEmpty
-        case #selector(clearScreenAndHistory(_:)), #selector(copyEverything(_:)),
-             #selector(performTextFinderAction(_:)): terminal != nil
-        case #selector(duplicateConnection(_:)): connection != nil
-        case #selector(editTunnels(_:)): canEditTunnels
-        case #selector(uploadFiles(_:)), #selector(downloadFile(_:)): canTransfer
-        case #selector(cancelTransfer(_:)): transfers.isRunning
-        default: true
-        }
+        commandState.allows(menuItem.action)
     }
 
-    // MARK: - Symbolleiste
-
+    /// Die Knöpfe haben dieselben Aktionen wie die Menübefehle, also gelten dieselben Regeln.
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        switch item.itemIdentifier {
-        case WorkbenchToolbar.disconnect: isConnected
-        case WorkbenchToolbar.tunnel: window?.attachedSheet == nil && canEditTunnels
-        case WorkbenchToolbar.upload: canTransfer
-        default: true
-        }
+        commandState.allows(item.action)
+    }
+
+    /// Zustand für Menü und Symbolleiste; die Regeln stehen in `TabCommandState` (M7 aus diesem Controller gelöst).
+    private var commandState: TabCommandState {
+        TabCommandState(hasSheet: window?.attachedSheet != nil, isConnected: isConnected, hasConnection: connection != nil,
+                        hasTerminal: terminal != nil, canTransfer: canTransfer,
+                        canEditTunnels: canEditTunnels, isTransferring: transfers.isRunning,
+                        sessionListHasFocus: sessionListHasFocus, savedSelection: sessions.savedSelection,
+                        selectionCount: sessions.selection.count,
+                        hasConnectableSelection: !sessions.connectableSelection.isEmpty,
+                        hasSavedSessions: !sessions.library.names.isEmpty)
     }
 
     // MARK: - Fenster
@@ -654,65 +657,19 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
     func scrolled(source: TerminalView, position: Double) {}
     func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 
-    /// OSC 52: Der Server will Text in die Zwischenablage legen – nur nach Rückfrage mit Vorschau (S11). Läuft schon eine
-    /// Rückfrage, wird die Anfrage verworfen (ein Server kann sie in Schleife schicken).
+    /// OSC 52: Der Server will Text in die Zwischenablage legen – nur nach Rückfrage (S11).
     func clipboardCopy(source: TerminalView, content: Data) {
-        guard let window, window.attachedSheet == nil, !clipboardRefused, content.count <= Self.clipboardLimit,
-              let text = String(data: content, encoding: .utf8), !text.isEmpty else { return }
-        let alert: NSAlert = NSAlert()
-        alert.messageText = "Der Server möchte Text in die Zwischenablage legen."
-        alert.informativeText = "\(text.count) Zeichen:\n\n" + Self.preview(text)
-        alert.addButton(withTitle: "Nicht erlauben")
-        alert.addButton(withTitle: "In die Zwischenablage")
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertSecondButtonReturn else {
-                self?.clipboardRefused = true
-                return
-            }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-        }
+        serverRequests.clipboardCopy(content, in: window)
     }
 
     /// Lesen der Zwischenablage (OSC 52) bleibt verboten: Die Frage käme mitten aus der Ausgabe, eine Antwort ginge
     /// an den Server (S11).
     func clipboardRead(source: TerminalView) -> Data? { nil }
 
-    /// Links (OSC 8 oder erkannte Adressen, ⌘-Klick): nur http, https und mailto, immer mit Rückfrage und voller
-    /// Adresse (S11).
+    /// Links (OSC 8 oder erkannte Adressen, ⌘-Klick): nur http, https und mailto, immer mit Rückfrage (S11).
     func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        guard let window, window.attachedSheet == nil else { return }
-        let alert: NSAlert = NSAlert()
-        guard let url = LinkPolicy.openableURL(link) else {
-            alert.messageText = "Dieser Link wird nicht geöffnet."
-            alert.informativeText = "Aus dem Terminal öffnet \(AppIdentity.name) nur Web- und E-Mail-Adressen "
-                + "(http, https, mailto):\n\n" + Self.preview(link)
-            alert.beginSheetModal(for: window)
-            return
-        }
-        alert.messageText = "Link aus dem Terminal öffnen?"
-        // Ziel eigens nennen: in „https://bank.example@boese.test“ ist boese.test das Ziel (Prüfer-Befund 10)
-        let target: String = url.host.map { "Ziel: \(SessionWarning.visible($0))\n\n" } ?? ""
-        alert.informativeText = target + SessionWarning.visible(url.absoluteString) + "\n\nDer Link kommt vom Server bzw. "
-            + "aus der Ausgabe eines Programms."
-        alert.addButton(withTitle: "Abbrechen")
-        alert.addButton(withTitle: "Öffnen")
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertSecondButtonReturn { NSWorkspace.shared.open(url) }
-        }
+        serverRequests.openLink(link, in: window)
     }
-
-    /// Größte Datenmenge, die ein Server per OSC 52 in die Zwischenablage legen darf (1 MiB).
-    static let clipboardLimit: Int = 1 << 20
-
-    /// Kurze, sichtbare Vorschau: höchstens 10 Zeilen und 400 Zeichen, Steuerzeichen als `\u{…}`.
-    static func preview(_ text: String) -> String {
-        let all: [Substring] = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown: String = all.prefix(10).map { SessionWarning.visible(String($0)) }.joined(separator: "\n")
-        let short: String = String(shown.prefix(400))
-        return all.count > 10 || short.count < shown.count ? short + " …" : short
-    }
-
 }
 
 private extension Error {

@@ -8,7 +8,7 @@ enum MainMenu {
         let main: NSMenu = NSMenu()
 
         let app: NSMenu = submenu(name, in: main)
-        app.addItem(item("Über \(name)", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
+        app.addItem(item("Über \(name)", #selector(AppDelegate.showAbout(_:))))   // mit Lizenzen (M7)
         app.addItem(.separator())
         app.addItem(item("Einstellungen …", #selector(AppDelegate.showSettings(_:)), ","))
         app.addItem(.separator())
@@ -76,6 +76,9 @@ enum MainMenu {
         view.addItem(item("Seitenleiste ein-/ausblenden", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         view.addItem(item("Inspektor ein-/ausblenden", #selector(NSSplitViewController.toggleInspector(_:)), "i", [.command, .option]))
         view.addItem(.separator())
+        view.addItem(item("Symbolleiste ein-/ausblenden", #selector(NSWindow.toggleToolbarShown(_:)), "t", [.command, .option]))
+        view.addItem(item("Symbolleiste anpassen …", #selector(NSWindow.runToolbarCustomizationPalette(_:))))
+        view.addItem(.separator())
         view.addItem(item("Vollbild", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
 
         // Eigenes Menü hinter „Darstellung“, vor „Fenster“ (RL 2.2 / 3.4 Regel 5)
@@ -108,8 +111,13 @@ enum MainMenu {
         window.addItem(item("Alle nach vorne bringen", #selector(NSApplication.arrangeInFront(_:))))
         NSApp.windowsMenu = window
 
-        // Hinweis zur Anmeldung mit Schlüssel und macOS-Agent (Plan M3) steht im Fenster „Schlüssel“
+        // M7: Kurzanleitung, Kürzel-Übersicht, PuTTY-Version (S7); der Hinweis zur Anmeldung mit Schlüssel und
+        // macOS-Agent (Plan M3) steht im Fenster „Schlüssel“
         let help: NSMenu = submenu("Hilfe", in: main)
+        help.addItem(item("Kurzanleitung", #selector(AppDelegate.showQuickStart(_:))))
+        help.addItem(item("Tastenkürzel", #selector(AppDelegate.showShortcuts(_:))))
+        help.addItem(item("PuTTY-Version", #selector(AppDelegate.showPuTTYVersion(_:))))
+        help.addItem(.separator())
         help.addItem(item("Anmeldung mit Schlüssel und Agent", #selector(AppDelegate.showKeys(_:))))
         NSApp.helpMenu = help
         return main

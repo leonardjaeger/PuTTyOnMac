@@ -47,6 +47,10 @@ build/m5/*
 build/m6/*
 !build/m6/*.sh
 !build/m6/*.py
+# M7: Hilfsskripte (Oberflächenprüfung, Bilder der Menü-Fenster, Messung, DMG); schritt.txt bleibt lokal
+!build/m7/
+build/m7/*
+!build/m7/*.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

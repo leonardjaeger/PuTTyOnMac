@@ -4,7 +4,7 @@ Die App enthält Software Dritter. Deren Lizenztexte stehen unten unverändert; 
 
 ## PuTTY 0.85 (plink, pscp, psftp, puttygen)
 
-Quelle: offizieller Tarball `putty-0.85.tar.gz` (SHA-256 `13fd4db2936d03b73812a7bcc2a658e4dd29cc776a56c3670a7fc6f1a0ee8af8`, signiert mit dem PuTTY Release Key 2026). Gebaut ohne GTK durch `Scripts/build-putty.sh`. Eigene Änderung: `Scripts/putty-patches/0001-macos-pollhup-beim-verbinden.patch` (abgewiesene Verbindung auf macOS, eine Zeile).
+Quelle: offizieller Tarball `putty-0.85.tar.gz` (SHA-256 `13fd4db2936d03b73812a7bcc2a658e4dd29cc776a56c3670a7fc6f1a0ee8af8`, signiert mit dem PuTTY Release Key 2026). Gebaut ohne GTK durch `Scripts/build-putty.sh`. Eigene Änderungen: `Scripts/putty-patches/0001-macos-pollhup-beim-verbinden.patch` (abgewiesene Verbindung auf macOS, eine Zeile) und `Scripts/putty-patches/0002-seriell-ohne-lokales-echo.patch` (serielle Verbindungen ohne lokales Echo und Zeilenpuffer).
 
 ```
 PuTTY is copyright 1997-2026 Simon Tatham.

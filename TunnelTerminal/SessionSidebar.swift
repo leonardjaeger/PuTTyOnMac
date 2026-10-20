@@ -28,6 +28,7 @@ struct SessionSidebar: View {
                         ForEach(group.names, id: \.self) { name in
                             SessionRow(title: SessionWarning.visible(SessionName.title(of: name)),
                                        host: SessionWarning.visible(model.library.host(of: name)),
+                                       protocolTitle: model.library.connectionProtocol(of: name)?.title,
                                        isConnected: connected.contains(name))
                                 .tag(name)
                         }

@@ -28,3 +28,17 @@ Messskript: `build/m1/cmd.sh`-Fassung vom 15.10.2026 (im Log `m1s20` des Bauwäc
 | Kern-Tests (`go.sh kern`) / alle App-Tests | ≈ 20 s / ≈ 60 s Testlauf |
 
 Messskript: `build/m6/timing.sh` (Auftrag `m6z1`).
+
+## M7 (20.10.2026)
+
+| Messung | Wert |
+|---|---|
+| Sauberer Bau in eigenem DerivedData (SwiftTerm aus dem Checkout, PuTTY aus dem Cache), mit `-warn-long-function-bodies=100` und `-warn-long-expression-type-checking=100` | 25 s Wandzeit, keine Warnung |
+| Bau nach Änderung einer Datei (`ConnectionWindowController.swift`) | 3 s |
+| Kern-Tests / alle App-Tests (`go.sh test`) | ≈ 0,2 s Testlauf (208 Tests) / ≈ 59 s Testlauf (113 Tests, davon `ThroughputTests` ≈ 30 s) |
+| Weitergabe-DMG (`build.sh dmg`: Release-Bau, Prüfungen, DMG) | ≈ 1 min, DMG 5,3 MB, App 11 MB |
+| Kurzanleitung laden (Hauptthread) | 2 ms als RTF (vorher 195–245 ms als HTML über WebKit) |
+| Release-App: Start bis Prozess / Speicher / CPU im Leerlauf | 0,15 s / 52 MB Footprint / 0,1 % |
+
+Messskript: `build/m7/timing.sh` (Auftrag `m7z1`), Messung der Release-App `build/m7/ui.sh messen` (Auftrag `m7m1`).
+

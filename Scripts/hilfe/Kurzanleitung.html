@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TunnelTerminal – Kurzanleitung</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", sans-serif; font-size: 13px; line-height: 1.45; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin-top: 16px; }
+  code { font-family: Menlo, monospace; font-size: 12px; }
+  ul { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<h1>TunnelTerminal – Kurzanleitung</h1>
+<p>TunnelTerminal verwaltet PuTTY-Sitzungen auf dem Mac. Verbunden wird mit PuTTYs eigenem <code>plink</code>, das in der
+App steckt; Protokoll, Verschlüsselung und die Prüfung der Hostschlüssel bleiben bei PuTTY.</p>
+
+<h2>1. Verbinden</h2>
+<ul>
+  <li><b>Schnellverbindung:</b> oben in der Seitenleiste <code>benutzer@server:port</code> eingeben, Verbindungsart wählen
+    (SSH, Telnet, Raw) und Return drücken. ⇧⌘K setzt den Cursor in das Feld. Beispiel: <code>test@server.example:2222</code></li>
+  <li><b>Sitzungen speichern:</b> Ablage › Neue Sitzung (⇧⌘N). Gruppen entstehen über den Namen: „Büro/Webserver“.
+    Doppelklick auf eine Sitzung verbindet.</li>
+  <li><b>Aus PuTTY übernehmen:</b> Ablage › Importieren – einen PuTTY-Ordner (Mac, Linux) oder eine Registrierungsdatei
+    (<code>.reg</code>) aus Windows-PuTTY. Vor dem Import zeigt die App eine Liste mit Warnungen.</li>
+  <li>Jede Verbindung läuft in einem Tab (⌘T). Ist der Tab schon verbunden, öffnet sich die nächste Sitzung daneben.</li>
+  <li><b>Geräte im eigenen Netzwerk:</b> Beim ersten Verbinden zu einer Adresse im lokalen Netzwerk (z. B. ein Router oder
+    ein Server zu Hause) fragt macOS, ob TunnelTerminal darauf zugreifen darf. Erlaube es und verbinde erneut (⌘R).
+    Ändern lässt sich das unter Systemeinstellungen › Datenschutz &amp; Sicherheit › Lokales Netzwerk.</li>
+</ul>
+
+<h2>2. Die erste Verbindung zu einem Server</h2>
+<p>Beim ersten Verbinden zeigt plink den Fingerabdruck des Servers und fragt, ob es ihn sich merken soll. Vergleiche ihn
+vorher mit dem Fingerabdruck, den der Server selbst nennt. Danach fragt plink nur noch, wenn sich der Schlüssel ändert.
+Steht im Terminal „Press Return to begin session“, genügt Return. Bekannte Hostschlüssel stehen unter
+Fenster › Bekannte Hostschlüssel.</p>
+
+<h2>3. Anmelden</h2>
+<ul>
+  <li><b>Mit Schlüssel (empfohlen):</b> Fenster › Schlüssel erzeugt einen Ed25519-Schlüssel und zeigt die Zeile, die auf dem
+    Server in <code>~/.ssh/authorized_keys</code> gehört. Im Sitzungs-Editor unter „Anmeldung“ die Schlüsseldatei wählen.</li>
+  <li><b>Mit dem Agenten von macOS:</b> <code>ssh-add --apple-use-keychain ~/.ssh/id_ed25519</code> im Terminal; plink nutzt
+    den Agenten von selbst.</li>
+  <li><b>Mit Passwort:</b> plink fragt im Terminal. Auf Wunsch sichert der Sitzungs-Editor das Passwort im Schlüsselbund
+    dieses Macs; es gilt nur für den Benutzer, Server und Port, für die es gesichert wurde.</li>
+</ul>
+
+<h2>4. Im Terminal</h2>
+<ul>
+  <li>Suchen (⌘F), Bildschirm und Verlauf leeren (⌘K), Alles kopieren (Bearbeiten-Menü), Verbindung duplizieren (⌘D),
+    Titel ändern (Fenster-Menü), Trennen (⌘.), Erneut verbinden (⌘R).</li>
+  <li>Text mit Zeilenumbruch fügt die App erst nach einer Rückfrage ein (⌘↩ fügt ein, ⎋ bricht ab).</li>
+  <li>Schrift, Farben und Rückblättern stehen in Profilen (Einstellungen › Profile); das Profil eines Tabs wählst du im
+    Inspektor rechts (⌥⌘I).</li>
+  <li>Ein Sitzungsprotokoll lässt sich je Sitzung im Editor einschalten; es liegt unter
+    <code>~/Library/Logs/TunnelTerminal</code>.</li>
+</ul>
+
+<h2>5. Tunnel, Proxy, Seriell</h2>
+<p>Port-Weiterleitungen (lokal, entfernt, dynamisch als SOCKS-Proxy), Proxys und Sprungserver stellst du im
+Sitzungs-Editor ein; der Knopf „Tunnel“ in der Symbolleiste öffnet ihn direkt dort. Weiterleitungen stehen bereit, sobald
+die Sitzung läuft (nach „Press Return to begin session“). Serielle Geräte (<code>/dev/cu.*</code>) sind eine eigene
+Verbindungsart im Editor.</p>
+
+<h2>6. Dateien übertragen</h2>
+<p>Während einer SSH-Verbindung: Dateien aufs Terminal oder auf die Fläche im Inspektor ziehen, oder den Knopf
+„Hochladen“ benutzen. Den Zielordner auf dem Server gibst du danach ein (leer = persönlicher Ordner). Verbindung ›
+Datei herunterladen lädt eine Datei vom Server. Gibt es die Datei schon, fragt die App vorher.</p>
+
+<h2>7. Links aus anderen Apps</h2>
+<p>Links wie <code>ssh://test@server.example:22</code> oder <code>telnet://192.0.2.10</code> öffnet TunnelTerminal, wenn es
+unter Einstellungen › Erweitert als Standard-App festgelegt ist. Vor jedem Verbinden fragt die App mit der vollständigen
+Adresse nach; achte auf die Zeile „Server“. Übernommen werden nur Benutzer, Server und Port; Links mit Passwort oder
+weiteren Angaben öffnet sie nicht. Telnet ist unverschlüsselt, bei SSH probiert plink die Schlüssel aus deinem Agenten.</p>
+
+<h2>8. Sicherheit auf einen Blick</h2>
+<ul>
+  <li>Hostschlüssel werden nie ohne deine Bestätigung angenommen.</li>
+  <li>Passwörter liegen nur im Schlüsselbund dieses Macs und gehen über eine Pipe an plink, nie als Argument oder Datei.</li>
+  <li>Programme auf dem Server dürfen die Zwischenablage nur nach Rückfrage füllen und nie lesen; Links aus dem Terminal
+    öffnen sich nur nach Rückfrage (strenger einstellbar unter Einstellungen › Sicherheit).</li>
+  <li>Sitzungen, die beim Verbinden etwas auf diesem Mac ausführen würden (lokaler Proxy-Befehl), verbinden erst nach einer
+    Warnung.</li>
+  <li>Die App hat kein Konto und schickt nichts ins Internet außer deinen Verbindungen.</li>
+</ul>
+
+<h2>9. PuTTY-Updates</h2>
+<p>Welche PuTTY-Version eingebaut ist, zeigt Hilfe › PuTTY-Version. Neue Versionen und Sicherheitshinweise veröffentlicht
+das PuTTY-Projekt auf seiner Website (Knopf unter Einstellungen › Erweitert). Bringt PuTTY ein Sicherheitsupdate, braucht
+es eine neue Version von TunnelTerminal – die eingebauten Werkzeuge lassen sich nicht einzeln austauschen.</p>
+
+<h2>10. Tastenkürzel</h2>
+<p>Alle Kürzel stehen unter Hilfe › Tastenkürzel.</p>
+</body>
+</html>

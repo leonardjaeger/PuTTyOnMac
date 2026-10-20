@@ -21,6 +21,24 @@
 			</dict>
 		</dict>
 	</dict>
+	<!-- M7: Text der Rückfrage „Lokales Netzwerk“ (macOS 15+); plink verbindet, die App ist dafür verantwortlich (TN3179) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TunnelTerminal verbindet sich mit den Servern und Geräten im lokalen Netzwerk, die du in einer Sitzung oder Schnellverbindung einträgst.</string>
+	<!-- M7: ssh:// und telnet:// aus anderen Apps, immer mit Bestätigung (S6) -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).verbindung</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ssh</string>
+				<string>telnet</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

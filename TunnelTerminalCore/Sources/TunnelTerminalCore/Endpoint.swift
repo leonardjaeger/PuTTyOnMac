@@ -55,7 +55,8 @@ public struct Endpoint: Equatable, Sendable {
         return userPart + shownHost + portPart
     }
 
-    private static func port(_ text: Substring?) throws(InputError) -> Int? {
+    /// Nur Ziffern, höchstens fünf; `nil` ohne Port (auch für `ConnectionLink`).
+    static func port(_ text: Substring?) throws(InputError) -> Int? {
         guard let text else { return nil }
         let isDigits: Bool = text.utf8.allSatisfy { $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }
         guard !text.isEmpty, text.utf8.count <= 5, isDigits, let value = Int(text) else {   // Bereich prüft init

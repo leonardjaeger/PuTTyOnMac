@@ -10,6 +10,8 @@
 		B10000000000000000000042 /* TunnelTerminalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000041 /* TunnelTerminalCore */; };
 		B10000000000000000000044 /* TunnelTerminalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000043 /* TunnelTerminalCore */; };
 		B10000000000000000000047 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000046 /* SwiftTerm */; };
+		B10000000000000000000072 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000070 /* LICENSE */; };
+		B10000000000000000000073 /* THIRD_PARTY_NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000071 /* THIRD_PARTY_NOTICES.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,6 +28,8 @@
 		B10000000000000000000004 /* TunnelTerminal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TunnelTerminal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000005 /* TunnelTerminalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TunnelTerminalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10000000000000000000070 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		B10000000000000000000071 /* THIRD_PARTY_NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_NOTICES.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -68,6 +72,8 @@
 				B10000000000000000000006 /* TunnelTerminal */,
 				B10000000000000000000007 /* TunnelTerminalTests */,
 				B10000000000000000000008 /* Config */,
+				B10000000000000000000070 /* LICENSE */,
+				B10000000000000000000071 /* THIRD_PARTY_NOTICES.md */,
 				B10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -189,6 +195,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000072 /* LICENSE in Resources */,
+				B10000000000000000000073 /* THIRD_PARTY_NOTICES.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -215,6 +223,7 @@
 				"$(SRCROOT)/Quellen/putty-0.85.tar.gz",
 				"$(SRCROOT)/Scripts/putty-patches",
 				"$(SRCROOT)/Scripts/putty-patches/0001-macos-pollhup-beim-verbinden.patch",
+				"$(SRCROOT)/Scripts/putty-patches/0002-seriell-ohne-lokales-echo.patch",
 			);
 			name = "PuTTY-Werkzeuge bauen";
 			outputFileListPaths = (
@@ -354,7 +363,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -367,7 +376,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.leonardjaeger.tunnelterminal;
 				PRODUCT_MODULE_NAME = TunnelTerminal;
 				PRODUCT_NAME = TunnelTerminal;
@@ -381,9 +390,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				DEPLOYMENT_POSTPROCESSING = YES;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -396,10 +407,12 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.leonardjaeger.tunnelterminal;
 				PRODUCT_MODULE_NAME = TunnelTerminal;
 				PRODUCT_NAME = TunnelTerminal;
+				STRIP_INSTALLED_PRODUCT = YES;
+				STRIP_STYLE = all;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;
@@ -410,9 +423,9 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.leonardjaeger.tunnelterminal.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
@@ -427,9 +440,9 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.leonardjaeger.tunnelterminal.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;

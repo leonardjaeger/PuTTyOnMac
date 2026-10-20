@@ -9,7 +9,14 @@ struct PasteBanner: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label(message, systemImage: "doc.on.clipboard")
+                // Warnung wie im Entwurf B (M7): Symbol in Orange, Text bleibt in der Textfarbe (Kontrast)
+                Label {
+                    Text(message)
+                        .fixedSize(horizontal: false, vertical: true)   // umbrechen statt abschneiden
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
                 Spacer()
                 Button("Abbrechen", action: cancel)
                     .help("Esc")
@@ -20,6 +27,7 @@ struct PasteBanner: View {
             .padding(.vertical, 6)
             Divider()
         }
+        .background(Color.orange.opacity(0.12))
         .background(.bar)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message)
@@ -28,7 +36,7 @@ struct PasteBanner: View {
     /// Text auch für die VoiceOver-Ansage.
     var message: String {
         let count: String = lines == 1 ? "1 Zeile" : "\(lines) Zeilen"
-        return "Text mit Zeilenumbruch einfügen? \(count) – die Shell kann sie sofort ausführen."
+        return "\(count) einfügen? Die Shell kann sie sofort ausführen."
     }
 
     private func cancel() { decide(false) }

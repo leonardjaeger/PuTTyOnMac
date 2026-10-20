@@ -11,6 +11,7 @@ public enum InputField: String, Sendable {
     case path = "Pfad"
     case profileName = "Profilname"
     case remotePath = "Pfad auf dem Server"
+    case link = "Link"
 }
 
 /// Abgelehnte Eingabe. Die Regeln stehen in Plan Abschnitt 6 (S3: keine Optionen einschleusen, S4: Sitzungsdateien).
@@ -37,6 +38,9 @@ public enum InputError: Error, Equatable, Sendable {
     case notAFile
     case backslashInName
     case singleCharacterHost
+    case unsupportedLink
+    case linkHasPassword
+    case linkHasExtras
 
     /// Meldung für die Oberfläche.
     public var message: String {
@@ -63,6 +67,9 @@ public enum InputError: Error, Equatable, Sendable {
         case .backslashInName: "pscp lädt Dateien mit „\\“ im Namen unter einem anderen Namen hoch – bitte die Datei umbenennen."
         case .singleCharacterHost: "pscp hält einen Server mit nur einem Zeichen im Namen für ein Laufwerk – bitte in der Sitzung "
             + "den vollständigen Namen oder die Adresse eintragen."
+        case .unsupportedLink: "Geöffnet werden nur Links, die mit ssh:// oder telnet:// beginnen."
+        case .linkHasPassword: "Der Link enthält ein Passwort. Passwörter übernimmt die App nie aus Links."
+        case .linkHasExtras: "Der Link enthält mehr als Benutzer, Server und Port (z. B. einen Pfad, Parameter oder Fingerabdruck)."
         case .proxyLoop: "Die SSH-Proxy-Sitzungen verweisen im Kreis aufeinander – plink würde endlos weiterverbinden."
         }
     }

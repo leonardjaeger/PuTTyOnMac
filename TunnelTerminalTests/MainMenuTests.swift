@@ -71,7 +71,20 @@ final class MainMenuTests: XCTestCase {
         XCTAssertTrue(window.items.contains { $0.action == #selector(AppDelegate.showKeys(_:)) })
         XCTAssertTrue(window.items.contains { $0.action == #selector(AppDelegate.showKnownHosts(_:)) })
         let help: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Hilfe" }?.submenu)
-        XCTAssertEqual(help.items.first?.action, #selector(AppDelegate.showKeys(_:)))
+        XCTAssertTrue(help.items.contains { $0.action == #selector(AppDelegate.showKeys(_:)) })
+    }
+
+    /// M7: Kurzanleitung, Tastenkürzel und PuTTY-Version in der Hilfe; Über-Fenster mit Lizenzen; Symbolleiste anpassbar.
+    func testHelpAndAboutCommands() throws {
+        let menu: NSMenu = MainMenu.build()
+        let help: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Hilfe" }?.submenu)
+        XCTAssertEqual(help.items.prefix(3).map(\.action), [#selector(AppDelegate.showQuickStart(_:)),
+                                                            #selector(AppDelegate.showShortcuts(_:)),
+                                                            #selector(AppDelegate.showPuTTYVersion(_:))])
+        let app: NSMenu = try XCTUnwrap(menu.items.first?.submenu)
+        XCTAssertEqual(app.items.first?.action, #selector(AppDelegate.showAbout(_:)))
+        let view: NSMenu = try XCTUnwrap(menu.items.first { $0.title == "Darstellung" }?.submenu)
+        XCTAssertTrue(view.items.contains { $0.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) })
     }
 
     /// M4: ⌘K leert, ⌘D dupliziert die Verbindung, ⌘F/⌘G/⇧⌘G/⌘E suchen, ⌘, öffnet die Einstellungen;

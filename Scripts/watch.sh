@@ -14,7 +14,7 @@ chmod 700 "$queue" "$queue/requests" "$queue/logs"
 limit_for() {
   case "$1" in
     test) echo 1800 ;;
-    build) echo 1200 ;;
+    build|dmg) echo 1200 ;;
     skript) echo 900 ;;
     kern) echo 600 ;;
     *) echo 120 ;;

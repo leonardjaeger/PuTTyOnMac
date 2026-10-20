@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Zeile einer gespeicherten Sitzung: Titel, Server (beide schon über `SessionWarning.visible`) und Status. Verbunden = gefüllter grüner Punkt, sonst ein leerer
-/// Kreis – unterscheidbar auch ohne Farbe.
+/// Zeile einer gespeicherten Sitzung: Titel, Server (beide schon über `SessionWarning.visible`), rechts die
+/// Verbindungsart (Entwurf B, M7) und Status. Verbunden = gefüllter grüner Punkt, sonst ein leerer Kreis – unterscheidbar
+/// auch ohne Farbe.
 struct SessionRow: View {
     let title: String
     let host: String
+    let protocolTitle: String?
     let isConnected: Bool
 
     var body: some View {
@@ -20,6 +22,12 @@ struct SessionRow: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+            }
+            Spacer(minLength: 4)
+            if let protocolTitle {
+                Text(protocolTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
