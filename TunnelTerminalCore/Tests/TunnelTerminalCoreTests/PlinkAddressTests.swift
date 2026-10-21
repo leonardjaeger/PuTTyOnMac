@@ -32,8 +32,8 @@ struct PlinkAddressTests {
         ("HostName=test@server.example:99\n", "server.example", 22),
         ("HostName=[2001:db8::1]\n", "2001:db8::1", 22),
         ("HostName=2001:db8::1\n", "2001:db8::1", 22),
-        ("HostName=server.example\nLogicalHostName=alias.example:2200\n", "alias.example", 2200),
-        ("HostName=server.example\nLogicalHostName=alias.example\nProtocol=ssh\nPortNumber=2222\n", "alias.example", 22)
+        ("HostName=server.example\nLogHost=alias.example:2200\n", "alias.example", 2200),
+        ("HostName=server.example\nLogHost=alias.example\nProtocol=ssh\nPortNumber=2222\n", "alias.example", 22)
     ])
     func hostKeyServer(text: String, host: String, port: Int) throws {
         let server: (host: String, port: Int)? = try session(text).hostKeyServer

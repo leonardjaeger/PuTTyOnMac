@@ -35,12 +35,12 @@ extension TerminalView {
 }
 
 extension RGB {
-    var color: NSColor {
+    fileprivate var color: NSColor {
         NSColor(srgbRed: CGFloat(red) / 255, green: CGFloat(green) / 255, blue: CGFloat(blue) / 255, alpha: 1)
     }
 
     /// SwiftTerm rechnet mit 16 Bit je Kanal.
-    var terminalColor: SwiftTerm.Color {
+    fileprivate var terminalColor: SwiftTerm.Color {
         SwiftTerm.Color(red: UInt16(red) * 257, green: UInt16(green) * 257, blue: UInt16(blue) * 257)
     }
 }

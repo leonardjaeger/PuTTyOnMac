@@ -30,7 +30,8 @@ struct SessionWarningTests {
     func legacyProxyType() throws {
         #expect(try warnings("ProxyType=4\nProxyTelnetCommand=x\n") == [.localProxyCommand("x")])
         #expect(try warnings("ProxyMethod=2\nProxyType=4\n").isEmpty)
-        #expect(try warnings("ProxyMethod=4\nProxyTelnetCommand=x\n").isEmpty)   // Telnet-Proxy: Befehl geht an den Proxy
+        // Telnet-Proxy: der Text geht an den Proxy – seit der Härtung eine Rückfrage (Ziel kann ein Dienst auf dem Mac sein)
+        #expect(try warnings("ProxyMethod=4\nProxyTelnetCommand=x\n") == [.telnetProxy(server: "proxy:80", text: "x")])
     }
 
     @Test("Zahlen wie PuTTY (atoi): führende Ziffern zählen")
@@ -136,6 +137,79 @@ struct SessionWarningTests {
         #expect(SessionWarning.visible("a\tb") == "a\\u{9}b")
         #expect(SessionWarning.visible("ä ö") == "ä ö")
         #expect(SessionWarning.localProxyCommand("x\u{202E}y").message.contains("x\\u{202E}y"))
+    }
+
+    /// Härtung (Prüfer-Agent): plink 0.85 startet weitere Befehle mit /bin/sh (proxy/newmain.c, ssh/userauth2-client.c,
+    /// unix/local-proxy.c) bzw. schickt beim Telnet-Proxy vorgegebenen Text. Alle sind Rückfragen vor dem Verbinden
+    /// und beim Import nicht vorausgewählt – auch über eine Proxy-Sitzung und die Standardeinstellungen.
+    @Test("Weitere Befehle auf diesem Mac: PreConnectCommand, AuthPlugin, Telnet-Proxy (Härtung)", arguments: [
+        ("PreConnectCommand=touch /tmp/x\n", SessionWarning.preConnectCommand("touch /tmp/x")),
+        ("HostName=server.example\nPreConnectCommand=knock %host\\x20%port\n", .preConnectCommand("knock server.example 22")),
+        ("Protocol=ssh\nAuthPlugin=/tmp/plugin --arg\n", .authPlugin("/tmp/plugin --arg")),
+        ("ProxyType=3\nProxyHost=127.0.0.1\nProxyPort=25\nProxyTelnetCommand=HELO x\\r\\n\n",
+         .telnetProxy(server: "127.0.0.1:25", text: "HELO x\r\n"))
+    ])
+    func moreLocalCommands(text: String, expected: SessionWarning) throws {
+        #expect(try warnings(text) == [expected])
+        #expect(expected.isDangerous && expected.blocksPreselection)
+        #expect(!expected.message.isEmpty)
+        // Seriell öffnet keine Netzverbindung: plink startet nichts davon
+        #expect(try warnings("Protocol=serial\n" + text).isEmpty)
+        let proxy: SessionFile = try SessionFile(contents: Data(text.utf8))
+        let main: SessionFile = try SessionFile(contents: Data("ProxyMethod=6\nProxyHost=Sprung\n".utf8))
+        #expect(try SessionWarning.requiringConfirmation(for: main) { $0 == "Sprung" ? proxy : nil } == [.viaProxy("Sprung", expected)])
+        #expect(try SessionWarning.requiringConfirmation(for: main) { $0 == "Default Settings" ? proxy : nil }
+                == [.viaProxy("Default Settings", expected)])
+    }
+
+    @Test("Leere Werte und X11-Weiterleitung: kein Befehl, X11 nur als Hinweis wie die Agent-Weiterleitung")
+    func emptyCommandsAndX11() throws {
+        #expect(try warnings("PreConnectCommand=\nAuthPlugin=\n").isEmpty)
+        #expect(try warnings("X11Forward=1\n") == [.x11Forwarding])
+        #expect(!SessionWarning.x11Forwarding.isDangerous && !SessionWarning.x11Forwarding.blocksPreselection)
+        #expect(try warnings("X11Forward=0\n").isEmpty)
+        // Anzeige als Pfad = lokaler Socket (x11disp.c): Rückfrage; ohne Weiterleitung egal
+        #expect(try warnings("X11Forward=1\nX11Display=/tmp/.X11-unix/X0\n") == [.x11Socket("/tmp/.X11-unix/X0")])
+        #expect(SessionWarning.x11Socket("/x").isDangerous)
+        #expect(try warnings("X11Forward=0\nX11Display=/tmp/x\n").isEmpty)
+        #expect(try warnings("X11Forward=1\nX11Display=localhost:10\n") == [.x11Forwarding])
+    }
+
+    @Test("Standardeinstellungen als SSH-Proxy gelten immer als SSH – auch mit Protocol=serial (Prüfer 2)")
+    func defaultSettingsAsProxyAreSSH() throws {
+        let defaults: SessionFile = try SessionFile(contents: Data(
+            "Protocol=serial\nProxyMethod=5\nProxyTelnetCommand=x\nPreConnectCommand=y\n".utf8))
+        let main: SessionFile = try SessionFile(contents: Data("ProxyMethod=6\nProxyHost=sprung.example\n".utf8))
+        #expect(try SessionWarning.requiringConfirmation(for: main) { $0 == "Default Settings" ? defaults : nil } == [
+            .viaProxy("Default Settings", .localProxyCommand("x")), .viaProxy("Default Settings", .preConnectCommand("y"))
+        ])
+    }
+
+    @Test("Paketprotokoll von plink: Rückfrage vor jedem Verbinden (schreibt bzw. überschreibt eine Datei, Prüfer 2)")
+    func packetLogNeedsConfirmation() throws {
+        let file: SessionFile = try SessionFile(contents: Data("LogType=3\nLogFileName=/tmp/p.log\nLogFileClash=1\n".utf8))
+        #expect(try SessionWarning.requiringConfirmation(for: file) { _ in nil } == [.packetLog("/tmp/p.log")])
+        let appLog: SessionFile = try SessionFile(contents: Data("LogType=2\n".utf8))
+        #expect(try SessionWarning.requiringConfirmation(for: appLog) { _ in nil }.isEmpty)
+    }
+
+    @Test("Proxy oder entfernte Weiterleitung auf einen lokalen Unix-Socket: nicht verbinden (Härtung)", arguments: [
+        "ProxyMethod=3\nProxyHost=/var/run/x.sock\n", "ProxyType=2\nProxyHost=[/tmp/s]\n",
+        "ProxyMethod=4\nProxyHost= /tmp/s\n", "ProxyMethod=6\nProxyHost=/tmp/s\n",
+        "PortForwardings=R2222=/var/run/x.sock:1\n", "PortForwardings=L8080=localhost:80,4R80=[/tmp/s]:0\n"
+    ])
+    func localSockets(text: String) throws {
+        let file: SessionFile = try SessionFile(contents: Data(text.utf8))
+        #expect(throws: InputError.localSocket) { try SessionWarning.requiringConfirmation(for: file) { _ in nil } }
+    }
+
+    @Test("Keine lokalen Sockets: Proxy-Befehl mit Pfad, lokale Weiterleitung, Seriell, Server als Name")
+    func noLocalSockets() throws {
+        for text in ["ProxyMethod=5\nProxyHost=/tmp/s\nProxyTelnetCommand=nc %proxyhost\n", "PortForwardings=L8080=/tmp/s:1\n",
+                     "Protocol=serial\nProxyMethod=3\nProxyHost=/tmp/s\n", "ProxyMethod=3\nProxyHost=proxy.server.example\n"] {
+            let file: SessionFile = try SessionFile(contents: Data(text.utf8))
+            #expect(!file.reachesLocalSocket, "\(text)")
+        }
     }
 
     @Test("SSH-Proxy über eine gespeicherte Sitzung: deren Gefahren zählen mit (PuTTY lädt sie, proxy/sshproxy.c)")

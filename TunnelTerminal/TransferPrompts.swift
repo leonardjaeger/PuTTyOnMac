@@ -8,7 +8,7 @@ struct TransferPrompts {
     var password: (_ target: String, _ rejected: Bool) async -> String?
     /// Gleichnamige Dateien im Zielordner ersetzen?
     var replace: (_ names: [String]) async -> Bool
-    /// Die Sitzung führt beim Verbinden etwas auf diesem Mac aus (S4) – trotzdem übertragen?
+    /// Die Sitzung startet beim Verbinden etwas auf diesem Mac oder schickt Text an einen Proxy (S4) – trotzdem übertragen?
     var dangers: (_ warnings: [SessionWarning], _ session: String) async -> Bool
 
     /// Sheets und Hinweise am Fenster des Tabs.
@@ -35,7 +35,7 @@ struct TransferPrompts {
                 guard let window = window() else { return false }
                 let alert: NSAlert = NSAlert()
                 alert.alertStyle = .warning
-                alert.messageText = "„\(SessionWarning.visible(session))“ führt beim Übertragen etwas auf diesem Mac aus."
+                alert.messageText = "„\(SessionWarning.visible(session))“ tut beim Übertragen mehr als nur verbinden."
                 alert.informativeText = warnings.map(\.message).joined(separator: "\n\n")
                     + "\n\nNur übertragen, wenn du das kennst und ihm vertraust."
                 alert.addButton(withTitle: "Abbrechen")

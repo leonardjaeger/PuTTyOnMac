@@ -16,6 +16,10 @@ struct PasswordTargetTests {
                 == "test@server.example:2222")
         #expect(try session("HostName=192.0.2.7\nUserName=test\n").passwordTarget == "test@192.0.2.7:22")
         #expect(try session("HostName=server.example\nUserName=test\nProxyMethod=0\n").passwordUnavailableReason == nil)
+        // Paketprotokoll mit PuTTYs Standard (Passwörter geschwärzt) bzw. App-Protokoll (LogType 1/2): Passwort erlaubt
+        #expect(try session("HostName=server.example\nUserName=test\nLogType=3\n").passwordUnavailableReason == nil)
+        #expect(try session("HostName=server.example\nUserName=test\nLogType=2\nSSHLogOmitPasswords=0\n")
+                .passwordUnavailableReason == nil)
     }
 
     @Test("Kein Passwort speichern ohne Benutzer, ohne Server, bei Telnet/Raw oder mit Proxy", arguments: [
@@ -24,7 +28,10 @@ struct PasswordTargetTests {
         ("HostName=server.example\nUserName=test\nProtocol=telnet\n", "SSH"),
         ("HostName=server.example\nUserName=test\nProxyMethod=6\nProxyHost=sprung\n", "Proxy"),
         ("HostName=server.example\nUserName=test\nProxyType=2\n", "Proxy"),
-        ("HostName=server.example\nUserName=test\nSSHManualHostKeys=SHA256:abc\n", "Hostschlüssel")
+        ("HostName=server.example\nUserName=test\nSSHManualHostKeys=SHA256:abc\n", "Hostschlüssel"),
+        ("HostName=server.example\nUserName=test\nLogType=3\nSSHLogOmitPasswords=0\n", "Paketprotokoll"),
+        ("HostName=server.example\nUserName=test\nLogType=4\nSSHLogOmitPasswords= 00x\n", "Paketprotokoll"),
+        ("HostName=server.example\nUserName=test\nAuthPlugin=/tmp/plugin\n", "AuthPlugin")
     ])
     func unavailable(text: String, reasonMentions: String) throws {
         let file: SessionFile = try session(text)

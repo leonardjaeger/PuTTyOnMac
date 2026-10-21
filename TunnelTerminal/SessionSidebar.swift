@@ -48,11 +48,14 @@ struct SessionSidebar: View {
                     model.selection = names
                     model.duplicateSelection()
                 }
+                // wie in der Menüleiste (TabCommandState): nur gespeicherte Sitzungen, Standardeinstellungen nie duplizieren
+                .disabled(names.contains(SessionName.defaultSettings) || !names.contains(where: model.library.names.contains))
                 Divider()
                 Button("Löschen", role: .destructive) {
                     model.selection = names
                     model.deleteSelection()
                 }
+                .disabled(!names.contains(where: model.library.names.contains))
             } primaryAction: { names in
                 model.connect(names)
             }

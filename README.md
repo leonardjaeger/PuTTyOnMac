@@ -2,7 +2,7 @@
 
 Native Mac-App für PuTTY-Sitzungen. Die App nutzt PuTTYs eigenes `plink` als Verbindungsprogramm und zeigt das Terminal mit [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) an. Einen eigenen SSH-Code enthält sie nicht: Protokoll, Kryptografie und Prüfung der Hostschlüssel bleiben bei PuTTY.
 
-**Stand:** Version 0.9.0 (Meilensteine M1–M7): Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw/Seriell, native Tabs, gespeicherte Sitzungen (Editor, Import aus PuTTY und Windows-`.reg`, Export), Schlüssel (Erzeugen und Umwandeln über puttygen), freiwilliges Passwort im Schlüsselbund, bekannte Hostschlüssel, Profile, Suchen, Port-Weiterleitungen, Proxy und Sprungserver, Dateiübertragung über pscp, `ssh://`- und `telnet://`-Links mit Bestätigung, Einstellungen, Kurzanleitung und Kürzel-Übersicht im Hilfe-Menü. Vor Version 1.0 folgt eine Sicherheitsprüfung.
+**Stand:** Version 1.0.0 (Meilensteine M1–M7 und Sicherheitsprüfung), nur Macs mit Apple-Chip: Schnellverbindung `benutzer@server:port`, SSH/Telnet/Raw/Seriell, native Tabs, gespeicherte Sitzungen (Editor, Import aus PuTTY und Windows-`.reg`, Export), Schlüssel (Erzeugen und Umwandeln über puttygen), freiwilliges Passwort im Schlüsselbund, bekannte Hostschlüssel, Profile, Suchen, Port-Weiterleitungen, Proxy und Sprungserver, Dateiübertragung über pscp, `ssh://`- und `telnet://`-Links mit Bestätigung, Einstellungen, Kurzanleitung und Kürzel-Übersicht im Hilfe-Menü.
 
 ## Voraussetzungen
 
@@ -36,4 +36,4 @@ Die PuTTY-Werkzeuge sind fest eingebaut (Hilfe › PuTTY-Version zeigt die Versi
 
 ## Lizenz
 
-MIT, siehe [LICENSE](LICENSE). Fremdcode (PuTTY, SwiftTerm) und der eigene PuTTY-Patch: siehe [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT, siehe [LICENSE](LICENSE). Fremdcode (PuTTY, SwiftTerm) und die beiden eigenen PuTTY-Patches: siehe [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -16,6 +16,17 @@ struct PuTTYFolderTests {
         try Data(text.utf8).write(to: folder.appendingPathComponent("sessions").appendingPathComponent(fileName))
     }
 
+    @Test("Höchstens `limit` Bytes insgesamt: weitere Dateien gelten als nicht gelesen (Härtung)")
+    func totalSizeLimit() throws {
+        let folder: URL = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for name in ["a", "b", "c"] { try put("HostName=server.example\n", name, in: folder) }   // je 24 Bytes
+        try put("\n", "d", in: folder)   // passte noch in die Grenze, wird nach der Grenze aber nicht mehr gelesen
+        let result: PuTTYFolder.Reading = try PuTTYFolder.sessions(in: folder, limit: 50)
+        #expect(result.sessions.map(\.name) == ["a", "b"])
+        #expect(result.unreadable == ["c", "d"])
+    }
+
     @Test("Liest alle Sitzungen byte-gleich, sortiert; Ordner und Rechte bleiben unverändert")
     func readsSessions() throws {
         let folder: URL = try makeFolder()

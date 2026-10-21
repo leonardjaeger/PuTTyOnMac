@@ -43,6 +43,16 @@ struct PortForwardingTests {
         #expect(try file("").portForwardings.isEmpty)
     }
 
+    @Test("Zurückschreiben behält plinks Schlüssel: „A“, fehlendes „L“, „D“-Wert ohne „L“ (Härtung, Robustheitstest)")
+    func keepsPlinkKeysWhenWritingBack() throws {
+        let read: [PortForwarding] = try file("AL80=a.example:1,L80=b.example:2,81=c.example:3,82=D").portForwardings
+        #expect(read.count == 4)   // vier verschiedene Schlüssel – plink richtet alle vier ein
+        var session: SessionFile = try file("")
+        try session.setPortForwardings(read)
+        #expect(session.value(forKey: "PortForwardings") == "AL80=a.example:1,L80=b.example:2,81=c.example:3,82=D")
+        #expect(session.portForwardings == read)
+    }
+
     @Test("Schreiben im Format von PuTTY, Rundlauf ergibt dieselbe Liste")
     func writesAndReadsBack() throws {
         var session: SessionFile = SessionFile()

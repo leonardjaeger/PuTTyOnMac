@@ -214,7 +214,7 @@ final class KeysModel {
     }
 
     /// Der geöffnete Schlüssel ist eine OpenSSH-Datei (für ssh-add); `.ppk` versteht ssh-add nicht.
-    var isOpenSSHFile: Bool {
+    private var isOpenSSHFile: Bool {
         guard let key else { return false }
         return key.url.pathExtension != "ppk"
     }

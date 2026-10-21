@@ -51,6 +51,12 @@ build/m6/*
 !build/m7/
 build/m7/*
 !build/m7/*.sh
+# versionen.sh (Aufräumen nach der M7-Abnahme) bleibt lokal: sucht auch nach dem alten Arbeitstitel (wie build/u1/cmd.sh)
+build/m7/versionen.sh
+# Härtung: Prüfskripte (S14-Suche, Laufzeitprüfung, Messung); schritt.txt bleibt lokal
+!build/haertung/
+build/haertung/*
+!build/haertung/*.sh
 
 # Fremdmaterial: PuTTY-Tarball und Leonards Vergleichs-Builds – nie ins Repo
 Quellen/

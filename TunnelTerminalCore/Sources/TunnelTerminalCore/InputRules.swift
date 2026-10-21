@@ -34,6 +34,7 @@ public enum InputError: Error, Equatable, Sendable {
     case profileNameTaken
     case notAbsolute
     case proxyLoop
+    case localSocket
     case forwardingTaken
     case notAFile
     case backslashInName
@@ -71,6 +72,8 @@ public enum InputError: Error, Equatable, Sendable {
         case .linkHasPassword: "Der Link enthält ein Passwort. Passwörter übernimmt die App nie aus Links."
         case .linkHasExtras: "Der Link enthält mehr als Benutzer, Server und Port (z. B. einen Pfad, Parameter oder Fingerabdruck)."
         case .proxyLoop: "Die SSH-Proxy-Sitzungen verweisen im Kreis aufeinander – plink würde endlos weiterverbinden."
+        case .localSocket: "Proxy oder entfernte Weiterleitung zeigt auf einen Pfad auf diesem Mac (lokaler Socket) – "
+            + "das verbindet die App nicht."
         }
     }
 }

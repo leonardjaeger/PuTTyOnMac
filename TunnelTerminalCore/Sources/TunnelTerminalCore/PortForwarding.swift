@@ -22,6 +22,9 @@ public struct PortForwarding: Equatable, Sendable {
     public let listen: String
     /// „ziel:port“; leer bei dynamischen Weiterleitungen.
     public let target: String
+    /// Schlüssel in plinks Einstellungen (nach `gppmap`, „D“ schon zu „L“): bleibt beim Zurückschreiben erhalten, sonst
+    /// fielen Einträge wie „AL80“ und „L80“, für plink zwei Weiterleitungen, zu einer zusammen (Robustheitstest).
+    private let key: String
 
     /// Neue Weiterleitung aus dem Editor; das Ziel folgt den Regeln für Server (S3), IPv6 kommt in Klammern.
     public init(kind: Kind, port: Int, targetHost: String = "", targetPort: Int = 0) throws(InputError) {
@@ -29,6 +32,7 @@ public struct PortForwarding: Equatable, Sendable {
         self.kind = kind
         addressFamily = nil
         listen = String(port)
+        key = (kind == .remote ? "R" : "L") + listen
         if kind == .dynamic {
             target = ""
             return
@@ -38,11 +42,12 @@ public struct PortForwarding: Equatable, Sendable {
         target = (targetHost.contains(":") ? "[\(targetHost)]" : targetHost) + ":\(targetPort)"
     }
 
-    private init(kind: Kind, addressFamily: Character?, listen: String, target: String) {
+    private init(kind: Kind, addressFamily: Character?, listen: String, target: String, key: String) {
         self.kind = kind
         self.addressFamily = addressFamily
         self.listen = listen
         self.target = target
+        self.key = key
     }
 
     /// Port als Zahl (nach einer Bindadresse); `nil` bei Dienstnamen wie „smtp“ (plink schlägt sie nach).
@@ -107,19 +112,28 @@ public struct PortForwarding: Equatable, Sendable {
                 target = ""
             }
             let forwarding: PortForwarding = PortForwarding(kind: kind, addressFamily: family, listen: String(rest),
-                                                            target: target)
+                                                            target: target, key: normalized)
             if values[normalized] == nil { keys.append(normalized) }
             values[normalized] = forwarding
         }
         return keys.compactMap { values[$0] }
     }
 
-    /// Schreibt die Liste wie `wmap` (dynamisch als „D<port>“ mit leerem Wert).
+    /// Schreibt die Liste wie `wmap`: dynamisch mit dem ersten „L“ des Schlüssels als „D“ und leerem Wert. Ohne „L“
+    /// im Schlüssel bleibt der Wert „D“ (wmap machte daraus eine lokale Weiterleitung ohne Ziel).
     static func text(of list: [PortForwarding]) -> String {
         list.map { forwarding in
-            let family: String = forwarding.addressFamily.map(String.init) ?? ""
-            let key: String = family + forwarding.kind.rawValue + forwarding.listen
-            return escaped(key) + "=" + escaped(forwarding.target)
+            var key: String = forwarding.key
+            var value: String = forwarding.target
+            if forwarding.kind == .dynamic {
+                if let l = key.firstIndex(of: "L") {
+                    key.replaceSubrange(l...l, with: "D")
+                    value = ""
+                } else {
+                    value = "D"
+                }
+            }
+            return escaped(key) + "=" + escaped(value)
         }.joined(separator: ",")
     }
 

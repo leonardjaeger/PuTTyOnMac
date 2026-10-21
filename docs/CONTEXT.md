@@ -17,9 +17,9 @@ _Nicht:_ Verbindung, Profil.
 
 **Export** – gespeicherte Sitzungen als Registrierungsdatei für Windows-PuTTY oder als PuTTY-Ordner ausgeben.
 
-**Warnung** – Hinweis auf eine Einstellung einer Sitzung, die mehr tut als verbinden: ein lokaler Proxy-Befehl (startet ein Programm auf dem Mac), eine eigene GSSAPI-Bibliothek (wird in plink geladen), ein entfernter Befehl, Agent-Weiterleitung, Port-Weiterleitungen, ein Sitzungsprotokoll, fest eingetragene Hostschlüssel oder ein SSH-Proxy.
+**Warnung** – Hinweis auf eine Einstellung einer Sitzung, die mehr tut als verbinden: ein lokaler Befehl (Proxy-Befehl, `PreConnectCommand`, Anmelde-Programm `AuthPlugin`), ein Telnet-Proxy (schickt vorgegebenen Text), ein entfernter Befehl, Agent- oder X11-Weiterleitung, Port-Weiterleitungen, ein Sitzungs- oder Paketprotokoll, eine eigene GSSAPI-Bibliothek (nur Hinweis: das plink der App ist ohne GSSAPI gebaut), fest eingetragene Hostschlüssel oder ein SSH-Proxy.
 
-**Gefährlich** – eine Warnung, bei der etwas auf dem Mac ausgeführt wird (lokaler Proxy-Befehl, eigene GSSAPI-Bibliothek), auch über eine Proxy-Sitzung. Vor jedem Verbinden fragt die App nach.
+**Gefährlich** – eine Warnung, bei der plink etwas auf dem Mac startet (lokaler Befehl) oder vorgegebenen Text an einen Dienst schickt (Telnet-Proxy), auch über eine Proxy-Sitzung. Vor jedem Verbinden fragt die App nach. Zeigt ein Proxy oder eine entfernte Weiterleitung auf einen lokalen Socket (Pfad), verbindet die App nicht.
 
 **Proxy-Sitzung** – gespeicherte Sitzung, deren Namen eine andere Sitzung als SSH-Proxy angibt; PuTTY lädt dann deren Einstellungen (sonst die Standardeinstellungen).
 
@@ -29,7 +29,7 @@ _Nicht:_ Verbindung, Profil.
 
 **Server** – der Rechner, zu dem verbunden wird (Name oder IP-Adresse). In PuTTY „HostName“.
 
-**Protokoll** – SSH, Telnet oder Raw (später zusätzlich Seriell). Bestimmt den Standardport; Raw hat keinen.
+**Protokoll** – SSH, Telnet, Raw oder Seriell (Seriell nur in gespeicherten Sitzungen). Bestimmt den Standardport; Raw hat keinen.
 
 **Verbindung** – ein laufendes plink in einem Fenster bzw. Tab, vom Start bis zum Ende. „Erneut verbinden“ startet eine neue Verbindung mit derselben Adresse bzw. Sitzung.
 

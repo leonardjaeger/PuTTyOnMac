@@ -3,10 +3,22 @@
 public indirect enum SessionWarning: Equatable, Sendable {
     /// Startet vor der Verbindung ein Programm auf diesem Mac (PuTTY-Proxy „Local“).
     case localProxyCommand(String)
+    /// Befehl vor jeder Netzverbindung (`PreConnectCommand`): plink startet ihn mit /bin/sh auf diesem Mac (Härtung).
+    case preConnectCommand(String)
+    /// Anmelde-Programm (`AuthPlugin`, seit PuTTY 0.77): plink startet es mit /bin/sh auf diesem Mac (Härtung).
+    case authPlugin(String)
+    /// Telnet-Proxy: plink schickt den ausgeschriebenen Text an den Proxy – das kann ein Dienst auf diesem Mac oder im
+    /// Netz sein (Härtung).
+    case telnetProxy(server: String, text: String)
     /// Befehl, den der Server statt der Shell ausführt.
     case remoteCommand(String)
     /// Der Server kann die Schlüssel im ssh-agent dieses Macs benutzen.
     case agentForwarding
+    /// Der Server kann Fenster auf der X-Anzeige dieses Macs öffnen (nur mit X-Server, z. B. XQuartz).
+    case x11Forwarding
+    /// X11-Weiterleitung zu einer Anzeige als Pfad (`X11Display=/…`): Der Server öffnet Verbindungen zu diesem lokalen
+    /// Socket (x11disp.c). Für XQuartz üblich, deshalb Rückfrage statt Sperre (Härtung, Prüfer 2).
+    case x11Socket(String)
     case portForwardings(String)
     /// Lokale Weiterleitungen nehmen auch Verbindungen anderer Rechner an (`LocalPortAcceptAll` oder Bindadresse, M5).
     case openLocalPorts
@@ -29,7 +41,8 @@ public indirect enum SessionWarning: Equatable, Sendable {
     /// Führt etwas auf diesem Mac aus: beim Import nicht vorausgewählt, vor jedem Verbinden eine Rückfrage.
     public var isDangerous: Bool {
         switch self {
-        case .localProxyCommand: true
+        // Paketprotokoll: plink schreibt (bzw. überschreibt mit LogFileClash=1) eine Datei, die die Sitzung bestimmt
+        case .localProxyCommand, .preConnectCommand, .authPlugin, .telnetProxy, .x11Socket, .packetLog: true
         case .viaProxy(_, let warning): warning.isDangerous
         default: false
         }
@@ -46,8 +59,16 @@ public indirect enum SessionWarning: Equatable, Sendable {
     public var message: String {
         switch self {
         case .localProxyCommand(let command): "Startet vor dem Verbinden diesen Befehl auf diesem Mac: \(Self.visible(command))"
+        case .preConnectCommand(let command): "Startet vor jedem Verbinden diesen Befehl auf diesem Mac: \(Self.visible(command))"
+        case .authPlugin(let command): "Startet zur Anmeldung dieses Programm auf diesem Mac: \(Self.visible(command))"
+        case .telnetProxy(let server, let text):
+            "Schickt vor dem Verbinden diesen Text an den Telnet-Proxy \(Self.visible(server)) (auch ein Dienst auf diesem Mac "
+                + "ist möglich): \(Self.visible(text))"
         case .remoteCommand(let command): "Führt auf dem Server diesen Befehl aus: \(Self.visible(command))"
         case .agentForwarding: "Agent-Weiterleitung: Der Server kann die Schlüssel aus dem ssh-agent dieses Macs benutzen."
+        case .x11Forwarding: "X11-Weiterleitung: Der Server kann Fenster auf diesem Mac öffnen (mit einem X-Server wie XQuartz)."
+        case .x11Socket(let path): "X11-Weiterleitung zum lokalen Socket \(Self.visible(path)): Der Server kann Verbindungen "
+            + "dorthin öffnen."
         case .portForwardings(let rules): "Port-Weiterleitungen: \(Self.visible(rules))"
         case .openLocalPorts: "Lokale Weiterleitungen nehmen auch Verbindungen anderer Rechner im Netz an."
         case .serialDevice(let path): "Seriell über einen Pfad außerhalb von /dev: \(Self.visible(path))"
@@ -94,6 +115,7 @@ extension SessionWarning {
                                 visited: inout Set<String>) throws -> [SessionWarning] {
         // Werte, die plink nicht sicher bzw. nicht eindeutig liest: wie eine unlesbare Datei (nicht verbinden)
         guard !file.hasDanglingEscapeInPortForwardings, !file.hasUndefinedProxy else { throw InputError.invalidFile }
+        guard !file.reachesLocalSocket else { throw InputError.localSocket }
         var result: [SessionWarning] = file.warnings.filter(\.isDangerous)
         guard let host = file.sshProxyHost else { return result }
         var name: String = host
@@ -101,6 +123,9 @@ extension SessionWarning {
         if proxy == nil {
             name = SessionName.defaultSettings
             proxy = try load(name)
+            // Dann nimmt plink immer SSH, auch wenn die Standardeinstellungen etwas anderes sagen (proxy/sshproxy.c) –
+            // sonst griffen die Ausnahmen für Seriell (Prüfer 2)
+            proxy?.setConnectionProtocol(.ssh)
         }
         guard let proxy else { return result }
         guard visited.insert(SessionName.fileKey(name)).inserted else { throw InputError.proxyLoop }
@@ -114,8 +139,22 @@ extension SessionFile {
     public var warnings: [SessionWarning] {
         var result: [SessionWarning] = []
         if let command = localProxyCommand { result.append(.localProxyCommand(command)) }
+        if connectionProtocol != .serial {   // Seriell öffnet keine Netzverbindung und meldet sich nicht an
+            // Platzhalter und Escapes wie plink (proxy/newmain.c: format_connection_setup_command)
+            if let command = value(forKey: "PreConnectCommand"), !command.isEmpty {
+                result.append(.preConnectCommand(expandedProxyCommand(command)))
+            }
+            if let command = value(forKey: "AuthPlugin"), !command.isEmpty { result.append(.authPlugin(command)) }
+            if proxyKind == .telnet {
+                result.append(.telnetProxy(server: "\(proxyHost):\(proxyPort)", text: expandedProxyCommand(proxyCommand)))
+            }
+        }
         if let command = value(forKey: "RemoteCommand"), !command.isEmpty { result.append(.remoteCommand(command)) }
         if integer(forKey: "AgentFwd") ?? 0 != 0 { result.append(.agentForwarding) }
+        if integer(forKey: "X11Forward") ?? 0 != 0 {
+            let display: String = value(forKey: "X11Display") ?? ""
+            result.append(display.hasPrefix("/") ? .x11Socket(display) : .x11Forwarding)
+        }
         if let rules = value(forKey: "PortForwardings"), !rules.isEmpty { result.append(.portForwardings(rules)) }
         if opensLocalPortsToNetwork { result.append(.openLocalPorts) }
         switch integer(forKey: "LogType") ?? 0 {
@@ -128,6 +167,15 @@ extension SessionFile {
         if connectionProtocol == .serial, !serialLine.isEmpty, !serialLine.hasPrefix("/dev/") { result.append(.serialDevice(serialLine)) }
         if let keys = value(forKey: "SSHManualHostKeys"), !keys.isEmpty { result.append(.manualHostKeys) }
         return result
+    }
+
+    /// Proxy-Server oder Ziel einer entfernten Weiterleitung ist ein Pfad: plink verbindet dann zu einem lokalen
+    /// Unix-Socket (unix/network.c, Name mit „/“) und schickt Daten des Proxys bzw. des Servers hinein (Härtung). Der
+    /// Editor kann solche Werte nicht anlegen; Seriell öffnet keine Netzverbindung.
+    var reachesLocalSocket: Bool {
+        func isPath(_ text: String) -> Bool { text.drop { $0 == "[" || $0 == " " }.hasPrefix("/") }
+        let proxyToSocket: Bool = connectionProtocol != .serial && ![.none, .localCommand].contains(proxyKind) && isPath(proxyHost)
+        return proxyToSocket || portForwardings.contains { $0.kind == .remote && isPath($0.target) }
     }
 
     /// `ProxyHost` bei einem SSH-Proxy (`ProxyMethod` 6–8, PROXY_SSH_TCPIP/EXEC/SUBSYSTEM); PuTTYs Standard ist „proxy“.

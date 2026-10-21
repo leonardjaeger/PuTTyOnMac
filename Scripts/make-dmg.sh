@@ -34,6 +34,11 @@ for f in "$app/Contents/MacOS/TunnelTerminal" "$app"/Contents/Helpers/*; do
   flags="$(codesign -dv "$f" 2>&1 | grep -oE 'flags=[^ ]+')"
   case "$flags" in *runtime*) echo "  $(basename "$f"): $flags" ;; *) echo "✗ ohne Hardened Runtime: $(basename "$f")"; fehler=1 ;; esac
 done
+# Nur Apple-Chip (Plan 3): die PuTTY-Werkzeuge gibt es nur für arm64 – eine Intel-Fassung der App startete, verbände aber nie
+for f in "$app/Contents/MacOS/TunnelTerminal" "$app"/Contents/Helpers/*; do
+  archs="$(lipo -archs "$f" 2>/dev/null)"
+  [ "$archs" = arm64 ] || { echo "✗ Architektur „$archs“ statt arm64: $(basename "$f")"; fehler=1; }
+done
 # get-task-allow erlaubte das Anhängen eines Debuggers – auch an plink, das Passwörter über die Pipe bekommt (S8)
 for f in "$app" "$app"/Contents/Helpers/*; do
   if codesign -d --entitlements - "$f" 2>/dev/null | grep -q get-task-allow; then echo "✗ get-task-allow: $(basename "$f")"; fehler=1; fi

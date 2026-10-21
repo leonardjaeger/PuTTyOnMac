@@ -19,7 +19,7 @@ final class TerminalProcess {
     var onExit: ((Int32) -> Void)?
 
     /// Obergrenze für Eingaben, die das Programm noch nicht gelesen hat (großes Einfügen, Antworten auf Abfragen).
-    static let pendingLimit: Int = 4 << 20
+    private static let pendingLimit: Int = 4 << 20
     private static let chunk: Int = 65_536
 
     private var pid: pid_t = 0

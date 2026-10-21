@@ -188,15 +188,16 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         }
     }
 
-    /// Ein lokaler Proxy-Befehl oder eine eigene GSSAPI-Bibliothek (auch in einer Proxy-Sitzung) führt etwas auf diesem
-    /// Mac aus: vor jedem Verbinden fragen (S4), alle Gefahren zeigen. Ist eine Sitzung nicht lesbar, nicht verbinden.
+    /// Ein lokaler Befehl (Proxy, `PreConnectCommand`, `AuthPlugin`) oder ein Telnet-Proxy (auch in einer Proxy-Sitzung):
+    /// vor jedem Verbinden fragen (S4), alle Gefahren zeigen. Ist eine Sitzung nicht lesbar, nicht verbinden.
     private func confirmAndStart(_ newConnection: Connection) {
         let warnings: [SessionWarning]
         do {
             warnings = try newConnection.warningsRequiringConfirmation()
         } catch {
             prepare(newConnection)
-            let reason: String = (error as? InputError) == .proxyLoop ? error.message : "Die Sitzung ist nicht lesbar (\(error.message))"
+            let reason: String = [.proxyLoop, .localSocket].contains(error as? InputError) ? error.message
+                : "Die Sitzung ist nicht lesbar (\(error.message))"
             connectionEnded("Nicht verbunden: \(reason)")
             return
         }
@@ -208,7 +209,7 @@ final class ConnectionWindowController: NSWindowController, NSWindowDelegate, NS
         prepare(newConnection)
         let alert: NSAlert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "„\(SessionWarning.visible(newConnection.displayName))“ führt beim Verbinden etwas auf diesem Mac aus."
+        alert.messageText = "„\(SessionWarning.visible(newConnection.displayName))“ tut beim Verbinden mehr als nur verbinden."
         alert.informativeText = warnings.map(\.message).joined(separator: "\n\n")
             + "\n\nNur verbinden, wenn du das kennst und ihm vertraust."
         alert.addButton(withTitle: "Abbrechen")

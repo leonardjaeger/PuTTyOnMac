@@ -210,9 +210,10 @@ final class Connection {
               let file, let passwordTarget = file.passwordTarget else { return nil }
         switch passwords.lookup(session: name, target: passwordTarget) {
         case .found(let data):
-            // shortcut: Das Passwort liegt als unveränderliche CFData aus dem Schlüsselbund vor und lässt sich nicht
-            // überschreiben, nur freigeben (geschieht nach dem Start); löschbar wäre es erst mit einer eigenen Kopie aus
-            // dem Schlüsselbund-Aufruf in einen selbst verwalteten Puffer – bei Bedarf in der Härtung
+            // Bewusst nicht überschrieben (Härtung): Der Schlüsselbund liefert unveränderliche Daten; Überschreiben ginge
+            // nur mit einer veralteten Schnittstelle, und Kopien in securityd, im Pipe-Puffer und in plink blieben
+            // trotzdem. Es lebt nur bis nach dem Start; Hardened Runtime ohne get-task-allow schützt
+            // den Speicher vor anderen Prozessen.
             usesStoredPassword = true
             return data
         case .otherTarget:

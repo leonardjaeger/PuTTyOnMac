@@ -172,6 +172,12 @@ struct RegistryFileTests {
             if let sessions = try? RegistryFile.sessions(from: Data(bytes)) {
                 for session in sessions {
                     #expect(!session.file.contents.contains(0))
+                    RobustnessTests.exercise(session.file)   // Härtung: auch Vorschau, Warnungen und Inspektor
+                }
+                // Importvorschau: Namen prüfen, nummerieren, Warnungen – kein Absturz, keine verbotenen Namen
+                for candidate in SessionImport.candidates(for: sessions, existingNames: ["Server"], reservedPrefix: "Schnell-")
+                where candidate.problem == nil && !candidate.replacesDefaultSettings {
+                    #expect((try? SessionName.check(candidate.name, reservedPrefix: "Schnell-")) != nil)
                 }
             }
         }

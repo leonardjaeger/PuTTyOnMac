@@ -64,7 +64,7 @@ Passwort-Bindung und die Hostschlüssel. Behoben in `SessionFile.portNumber`; `s
 `utils/sessprep.c` (`prepare_session`) bereitet `HostName` vor dem Verbinden auf: Leerzeichen vorn weg, ein
 `benutzer@` bis zum **letzten** „@“ ersetzt `UserName`, ein **einzelnes** „:…“ außerhalb eckiger Klammern wird
 verworfen (kein Port!), übrige Leerzeichen und Tabs entfallen. `ssh/ssh.c` (`ssh_hostport_setup`) nimmt für die
-Hostschlüssel `LogicalHostName`, wenn gesetzt (Port dann 22 oder aus einem einzelnen „:port“), sonst den
+Hostschlüssel `LogHost` (Korrektur in der Härtung; vorher stand hier `LogicalHostName`), wenn gesetzt (Port dann 22 oder aus einem einzelnen „:port“), sonst den
 aufbereiteten Server; `host_strduptrim` entfernt eckige Klammern um IPv6-Literale. Die App rechnet das byteweise nach
 (`SessionFile.hostKeyServer`, `passwordTarget`; Tests `PlinkAddressTests`) – sonst gälte ein gespeichertes Passwort
 für einen anderen Benutzer bzw. der Inspektor fände bekannte Schlüssel nicht.

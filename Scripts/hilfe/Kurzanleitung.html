@@ -50,7 +50,8 @@ Fenster › Bekannte Hostschlüssel.</p>
 <ul>
   <li>Suchen (⌘F), Bildschirm und Verlauf leeren (⌘K), Alles kopieren (Bearbeiten-Menü), Verbindung duplizieren (⌘D),
     Titel ändern (Fenster-Menü), Trennen (⌘.), Erneut verbinden (⌘R).</li>
-  <li>Text mit Zeilenumbruch fügt die App erst nach einer Rückfrage ein (⌘↩ fügt ein, ⎋ bricht ab).</li>
+  <li>Text mit Zeilenumbruch fügt die App erst nach einer Rückfrage ein (⌘↩ fügt ein, ⎋ bricht ab). Ausnahme: Text,
+    den ein macOS-Dienst einfügt (App-Menü › Dienste), kommt ohne diese Rückfrage an.</li>
   <li>Schrift, Farben und Rückblättern stehen in Profilen (Einstellungen › Profile); das Profil eines Tabs wählst du im
     Inspektor rechts (⌥⌘I).</li>
   <li>Ein Sitzungsprotokoll lässt sich je Sitzung im Editor einschalten; es liegt unter
@@ -80,8 +81,10 @@ weiteren Angaben öffnet sie nicht. Telnet ist unverschlüsselt, bei SSH probier
   <li>Passwörter liegen nur im Schlüsselbund dieses Macs und gehen über eine Pipe an plink, nie als Argument oder Datei.</li>
   <li>Programme auf dem Server dürfen die Zwischenablage nur nach Rückfrage füllen und nie lesen; Links aus dem Terminal
     öffnen sich nur nach Rückfrage (strenger einstellbar unter Einstellungen › Sicherheit).</li>
-  <li>Sitzungen, die beim Verbinden etwas auf diesem Mac ausführen würden (lokaler Proxy-Befehl), verbinden erst nach einer
-    Warnung.</li>
+  <li>Sitzungen, die beim Verbinden mehr tun als verbinden (einen Befehl oder ein Anmelde-Programm auf diesem Mac starten,
+    Text an einen Telnet-Proxy schicken, ein Paketprotokoll schreiben, X11 über einen Pfad weiterleiten), verbinden erst
+    nach einer Rückfrage, die zeigt, was passiert. Proxys und entfernte Weiterleitungen zu einem Pfad auf diesem Mac
+    (lokaler Socket) verbindet die App gar nicht.</li>
   <li>Die App hat kein Konto und schickt nichts ins Internet außer deinen Verbindungen.</li>
 </ul>
 

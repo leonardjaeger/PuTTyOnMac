@@ -239,6 +239,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func removeQuickSessions() {
+        // Läuft die App ein zweites Mal (z. B. aus dem DMG oder als Test-Host), gehören vorhandene Schnellsitzungen der
+        // anderen Instanz: nicht löschen, sonst scheitert dort eine laufende Dateiübertragung (Härtung, Code-Review R-2)
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "").count <= 1
+        else { return }
         do {
             try AppIdentity.puttyDirectory().removeSessions(withPrefix: AppIdentity.quickSessionPrefix)
         } catch {

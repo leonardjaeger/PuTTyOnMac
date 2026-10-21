@@ -138,14 +138,23 @@ extension SessionFile {
         if !(value(forKey: "SSHManualHostKeys") ?? "").isEmpty {
             return "Mit fest vorgegebenen Hostschlüsseln (SSHManualHostKeys) speichert die App kein Passwort."
         }
+        // Ein Anmelde-Programm bekäme das Passwort: plink beantwortet dessen verdeckte Abfrage mit -pwfile (Prüfer 2)
+        if !(value(forKey: "AuthPlugin") ?? "").isEmpty {
+            return "Mit Anmelde-Programm (AuthPlugin) gibt die App kein Passwort weiter."
+        }
+        // plinks Paketprotokoll schwärzt Passwörter nur mit SSHLogOmitPasswords (Standard an, ssh/censor2.c) – sonst
+        // stünde das Passwort aus dem Schlüsselbund im Klartext in der Protokolldatei (S1, S9)
+        if (3...4).contains(integer(forKey: "LogType") ?? 0), integer(forKey: "SSHLogOmitPasswords") == 0 {
+            return "Mit SSH-Paketprotokoll ohne Passwortschutz (SSHLogOmitPasswords=0) gibt die App kein Passwort weiter."
+        }
         return nil
     }
 
     /// Server und Port, unter denen plink die Hostschlüssel dieser SSH-Sitzung in `sshhostkeys` sucht und speichert
-    /// (`ssh_hostport_setup`, ssh.c): `LogicalHostName` mit eigenem Port (sonst 22), wenn gesetzt; sonst der Server.
+    /// (`ssh_hostport_setup`, ssh.c): `LogHost` (in PuTTY „Logical name of remote host“) mit eigenem Port (sonst 22), wenn gesetzt; sonst der Server.
     public var hostKeyServer: (host: String, port: Int)? {
         guard connectionProtocol == .ssh else { return nil }
-        let logical: [UInt8] = Array((value(forKey: "LogicalHostName") ?? "").utf8)
+        let logical: [UInt8] = Array((value(forKey: "LogHost") ?? "").utf8)
         if !logical.isEmpty {
             let colons: [Int] = Self.unbracketedColons(in: logical[...])
             guard colons.count == 1, let colon = colons.first else { return (Self.withoutBrackets(logical), 22) }
